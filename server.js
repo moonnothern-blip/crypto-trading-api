@@ -23,17 +23,10 @@ let users = [
 ];
 
 // Deposit requests storage
-let depositRequests = [
-  // {
-  //   id: 'req1',
-  //   userId: 'user123',
-  //   userEmail: 'user@email.com',
-  //   amount: 500,
-  //   status: 'pending', // pending, approved, rejected
-  //   adminWallet: null,
-  //   createdAt: new Date()
-  // }
-];
+let depositRequests = [];
+
+// Withdrawal requests storage
+let withdrawalRequests = [];
 
 // ============ HTML PAGES ============
 app.get('/admin-login', (req, res) => {
@@ -159,7 +152,6 @@ app.post('/api/request-deposit', (req, res) => {
     return res.status(400).json({ message: 'Invalid amount' });
   }
   
-  // Create deposit request
   const newRequest = {
     id: Date.now().toString(),
     userId: user.id,
@@ -167,20 +159,168 @@ app.post('/api/request-deposit', (req, res) => {
     amount: amount,
     status: 'pending',
     adminWallet: null,
-    createdAt: new Date(),
-    userMessage: `Deposit request for $${amount}`
+    createdAt: new Date()
   };
   
   depositRequests.push(newRequest);
   
   res.json({ 
-    message: `Deposit request for $${amount} submitted. Admin will provide wallet address.`,
+    message: `Deposit request for $${amount} submitted.`,
     requestId: newRequest.id,
     status: 'pending'
   });
 });
 
-// ============ ADMIN PROVIDES WALLET ADDRESS ============
+// ============ WITHDRAWAL REQUEST (Client creates request) ============
+app.post('/api/request-withdraw', (req, res) => {
+  const { amount, walletAddress } = req.body;
+  const token = req.headers.authorization?.split(' ')[1];
+  
+  if (!token) {
+    return res.status(401).json({ message: 'Unauthorized' });
+  }
+  
+  const user = users.find(u => u.id === token);
+  
+  if (!user) {
+    return res.status(401).json({ message: 'Invalid token' });
+  }
+  
+  if (!amount || amount <= 0) {
+    return res.status(400).json({ message: 'Invalid amount' });
+  }
+  
+  if (amount > user.withdrawLimit) {
+    return res.status(400).json({ 
+      message: `Withdrawal limit exceeded. Your limit is $${user.withdrawLimit}` 
+    });
+  }
+  
+  if (user.balance < amount) {
+    return res.status(400).json({ message: 'Insufficient balance' });
+  }
+  
+  if (!walletAddress) {
+    return res.status(400).json({ message: 'Wallet address required' });
+  }
+  
+  const newRequest = {
+    id: Date.now().toString(),
+    userId: user.id,
+    userEmail: user.email,
+    amount: amount,
+    walletAddress: walletAddress,
+    status: 'pending',
+    createdAt: new Date()
+  };
+  
+  withdrawalRequests.push(newRequest);
+  
+  res.json({ 
+    message: `Withdrawal request for $${amount} submitted. Awaiting admin approval.`,
+    requestId: newRequest.id,
+    status: 'pending'
+  });
+});
+
+// ============ ADMIN: Get all withdrawal requests ============
+app.get('/api/admin/withdrawal-requests', (req, res) => {
+  const adminToken = req.headers.authorization?.split(' ')[1];
+  
+  const admin = users.find(u => u.id === adminToken && u.isAdmin === true);
+  if (!admin) {
+    return res.status(403).json({ message: 'Admin access required' });
+  }
+  
+  res.json({ requests: withdrawalRequests });
+});
+
+// ============ ADMIN: Approve withdrawal ============
+app.post('/api/admin/approve-withdrawal', (req, res) => {
+  const { requestId } = req.body;
+  const adminToken = req.headers.authorization?.split(' ')[1];
+  
+  const admin = users.find(u => u.id === adminToken && u.isAdmin === true);
+  if (!admin) {
+    return res.status(403).json({ message: 'Admin access required' });
+  }
+  
+  const request = withdrawalRequests.find(r => r.id === requestId);
+  if (!request) {
+    return res.status(404).json({ message: 'Request not found' });
+  }
+  
+  if (request.status !== 'pending') {
+    return res.status(400).json({ message: 'Request already processed' });
+  }
+  
+  const user = users.find(u => u.id === request.userId);
+  if (!user) {
+    return res.status(404).json({ message: 'User not found' });
+  }
+  
+  // Check again for sufficient balance
+  if (user.balance < request.amount) {
+    return res.status(400).json({ message: 'Insufficient balance now' });
+  }
+  
+  // Remove balance from user
+  user.balance -= request.amount;
+  
+  request.status = 'approved';
+  request.approvedAt = new Date();
+  request.approvedBy = admin.id;
+  
+  res.json({ 
+    message: `Withdrawal of $${request.amount} approved and processed.`,
+    newBalance: user.balance
+  });
+});
+
+// ============ ADMIN: Reject withdrawal ============
+app.post('/api/admin/reject-withdrawal', (req, res) => {
+  const { requestId, reason } = req.body;
+  const adminToken = req.headers.authorization?.split(' ')[1];
+  
+  const admin = users.find(u => u.id === adminToken && u.isAdmin === true);
+  if (!admin) {
+    return res.status(403).json({ message: 'Admin access required' });
+  }
+  
+  const request = withdrawalRequests.find(r => r.id === requestId);
+  if (!request) {
+    return res.status(404).json({ message: 'Request not found' });
+  }
+  
+  request.status = 'rejected';
+  request.rejectionReason = reason;
+  request.rejectedAt = new Date();
+  
+  res.json({ 
+    message: `Withdrawal request rejected`
+  });
+});
+
+// ============ CLIENT: Get withdrawal requests ============
+app.get('/api/my-withdrawal-requests', (req, res) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  
+  if (!token) {
+    return res.status(401).json({ message: 'Unauthorized' });
+  }
+  
+  const user = users.find(u => u.id === token);
+  
+  if (!user) {
+    return res.status(401).json({ message: 'Invalid token' });
+  }
+  
+  const userRequests = withdrawalRequests.filter(r => r.userId === user.id);
+  
+  res.json({ requests: userRequests });
+});
+
+// ============ ADMIN: Provide wallet address for deposit ============
 app.post('/api/admin/provide-wallet', (req, res) => {
   const { requestId, walletAddress } = req.body;
   const adminToken = req.headers.authorization?.split(' ')[1];
@@ -203,12 +343,12 @@ app.post('/api/admin/provide-wallet', (req, res) => {
   request.status = 'waiting_payment';
   
   res.json({ 
-    message: `Wallet address provided. Client can now send payment.`,
+    message: `Wallet address provided.`,
     request: request
   });
 });
 
-// ============ CLIENT GETS WALLET ADDRESS ============
+// ============ CLIENT: Get deposit requests ============
 app.get('/api/my-deposit-requests', (req, res) => {
   const token = req.headers.authorization?.split(' ')[1];
   
@@ -227,7 +367,7 @@ app.get('/api/my-deposit-requests', (req, res) => {
   res.json({ requests: userRequests });
 });
 
-// ============ CLIENT CONFIRMS PAYMENT SENT ============
+// ============ CLIENT: Confirm payment sent ============
 app.post('/api/confirm-payment', (req, res) => {
   const { requestId, transactionId } = req.body;
   const token = req.headers.authorization?.split(' ')[1];
@@ -260,11 +400,11 @@ app.post('/api/confirm-payment', (req, res) => {
   request.paymentSentAt = new Date();
   
   res.json({ 
-    message: `Payment confirmation submitted. Admin will verify and add funds.`
+    message: `Payment confirmation submitted.`
   });
 });
 
-// ============ ADMIN CONFIRMS DEPOSIT (Adds funds) ============
+// ============ ADMIN: Confirm deposit ============
 app.post('/api/admin/confirm-deposit', (req, res) => {
   const { requestId } = req.body;
   const adminToken = req.headers.authorization?.split(' ')[1];
@@ -288,19 +428,18 @@ app.post('/api/admin/confirm-deposit', (req, res) => {
     return res.status(404).json({ message: 'User not found' });
   }
   
-  // Add funds to user balance
   user.balance += request.amount;
   
   request.status = 'completed';
   request.completedAt = new Date();
   
   res.json({ 
-    message: `Deposit of $${request.amount} confirmed and added to ${user.email}`,
+    message: `Deposit of $${request.amount} confirmed and added.`,
     newBalance: user.balance
   });
 });
 
-// ============ ADMIN REJECTS DEPOSIT ============
+// ============ ADMIN: Reject deposit ============
 app.post('/api/admin/reject-deposit', (req, res) => {
   const { requestId, reason } = req.body;
   const adminToken = req.headers.authorization?.split(' ')[1];
@@ -320,57 +459,6 @@ app.post('/api/admin/reject-deposit', (req, res) => {
   
   res.json({ 
     message: `Deposit request rejected`
-  });
-});
-
-// ============ WITHDRAW (User) ============
-app.post('/api/withdraw', (req, res) => {
-  const { amount, walletAddress } = req.body;
-  const token = req.headers.authorization?.split(' ')[1];
-  
-  if (!token) {
-    return res.status(401).json({ message: 'Unauthorized' });
-  }
-  
-  const user = users.find(u => u.id === token);
-  
-  if (!user) {
-    return res.status(401).json({ message: 'Invalid token' });
-  }
-  
-  if (!amount || amount <= 0) {
-    return res.status(400).json({ message: 'Invalid amount' });
-  }
-  
-  if (amount > user.withdrawLimit) {
-    return res.status(400).json({ 
-      message: `Withdrawal limit exceeded. Your limit is $${user.withdrawLimit}` 
-    });
-  }
-  
-  if (user.balance < amount) {
-    return res.status(400).json({ message: 'Insufficient balance' });
-  }
-  
-  if (!walletAddress) {
-    return res.status(400).json({ message: 'Wallet address required' });
-  }
-  
-  user.balance -= amount;
-  
-  // Create withdrawal record
-  const withdrawal = {
-    id: Date.now().toString(),
-    userId: user.id,
-    amount: amount,
-    walletAddress: walletAddress,
-    status: 'completed',
-    createdAt: new Date()
-  };
-  
-  res.json({ 
-    message: `Withdrawal of $${amount} sent to ${walletAddress.substring(0, 10)}...`,
-    newBalance: user.balance
   });
 });
 
@@ -432,39 +520,8 @@ app.post('/api/admin/update-limit', (req, res) => {
   user.withdrawLimit = newLimit;
   
   res.json({ 
-    message: `Withdrawal limit for ${user.email} updated to $${newLimit}`,
+    message: `Withdrawal limit updated to $${newLimit}`,
     newLimit: user.withdrawLimit
-  });
-});
-
-// ============ ADMIN: Remove balance ============
-app.post('/api/admin/remove-balance', (req, res) => {
-  const { userId, amount } = req.body;
-  const adminToken = req.headers.authorization?.split(' ')[1];
-  
-  const admin = users.find(u => u.id === adminToken && u.isAdmin === true);
-  if (!admin) {
-    return res.status(403).json({ message: 'Admin access required' });
-  }
-  
-  const user = users.find(u => u.id === userId);
-  if (!user) {
-    return res.status(404).json({ message: 'User not found' });
-  }
-  
-  if (!amount || amount <= 0) {
-    return res.status(400).json({ message: 'Invalid amount' });
-  }
-  
-  if (user.balance < amount) {
-    return res.status(400).json({ message: 'User does not have sufficient balance' });
-  }
-  
-  user.balance -= amount;
-  
-  res.json({ 
-    message: `Removed $${amount} from ${user.email}`,
-    newBalance: user.balance
   });
 });
 
@@ -494,6 +551,4 @@ app.get('/api/dashboard', (req, res) => {
 // Start server
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on port ${PORT}`);
-  console.log(`Users registered: ${users.length}`);
-  console.log(`Deposit requests: ${depositRequests.length}`);
 });

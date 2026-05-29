@@ -100,12 +100,7 @@
             color: #333;
         }
 
-        h3 {
-            margin-bottom: 15px;
-            color: #555;
-        }
-
-        input, select {
+        input {
             width: 100%;
             padding: 12px;
             margin: 10px 0;
@@ -127,19 +122,19 @@
             margin-top: 15px;
         }
 
-        .request-btn {
+        .request-deposit-btn {
             background: #28a745;
         }
 
-        .request-btn:hover {
+        .request-deposit-btn:hover {
             background: #218838;
         }
 
-        .withdraw-btn {
+        .request-withdraw-btn {
             background: #e74c3c;
         }
 
-        .withdraw-btn:hover {
+        .request-withdraw-btn:hover {
             background: #c0392b;
         }
 
@@ -165,7 +160,7 @@
             color: #0c5460;
         }
 
-        .requests-list {
+        .requests-section {
             margin-top: 30px;
             background: white;
             padding: 20px;
@@ -184,23 +179,23 @@
             font-weight: bold;
         }
 
-        .status-waiting_payment {
-            color: #17a2b8;
-            font-weight: bold;
-        }
-
-        .status-payment_sent {
-            color: #ffc107;
-            font-weight: bold;
-        }
-
-        .status-completed {
+        .status-approved {
             color: #28a745;
             font-weight: bold;
         }
 
         .status-rejected {
             color: #dc3545;
+            font-weight: bold;
+        }
+
+        .status-waiting_payment {
+            color: #17a2b8;
+            font-weight: bold;
+        }
+
+        .status-completed {
+            color: #28a745;
             font-weight: bold;
         }
 
@@ -253,24 +248,33 @@
                 <h2>💰 Request Deposit</h2>
                 <p style="color: #666; margin-bottom: 15px;">Request to add funds. Admin will provide wallet address.</p>
                 <input type="number" id="depositAmount" placeholder="Enter amount to deposit">
-                <button class="request-btn" onclick="requestDeposit()">Request Deposit</button>
+                <button class="request-deposit-btn" onclick="requestDeposit()">Request Deposit</button>
                 <div id="depositMessage" class="message"></div>
             </div>
 
-            <!-- Withdraw Section -->
+            <!-- Request Withdrawal Section -->
             <div class="card">
-                <h2>💸 Withdraw Funds</h2>
-                <input type="number" id="withdrawAmount" placeholder="Enter amount">
+                <h2>💸 Request Withdrawal</h2>
+                <p style="color: #666; margin-bottom: 15px;">Request to withdraw funds. Admin will approve.</p>
+                <input type="number" id="withdrawAmount" placeholder="Enter amount to withdraw">
                 <input type="text" id="walletAddress" placeholder="Wallet Address (BTC/ETH/USDT)">
-                <button class="withdraw-btn" onclick="withdraw()">Withdraw</button>
+                <button class="request-withdraw-btn" onclick="requestWithdraw()">Request Withdrawal</button>
                 <div id="withdrawMessage" class="message"></div>
             </div>
         </div>
 
         <!-- Deposit Requests History -->
-        <div class="requests-list">
+        <div class="requests-section">
             <h2>📋 My Deposit Requests</h2>
-            <div id="requestsContainer">
+            <div id="depositRequestsContainer">
+                <p>Loading...</p>
+            </div>
+        </div>
+
+        <!-- Withdrawal Requests History -->
+        <div class="requests-section">
+            <h2>📋 My Withdrawal Requests</h2>
+            <div id="withdrawRequestsContainer">
                 <p>Loading...</p>
             </div>
         </div>
@@ -309,7 +313,7 @@
                 });
                 const data = await response.json();
                 
-                const container = document.getElementById('requestsContainer');
+                const container = document.getElementById('depositRequestsContainer');
                 
                 if (data.requests.length === 0) {
                     container.innerHTML = '<p>No deposit requests yet.</p>';
@@ -346,7 +350,7 @@
                             break;
                         case 'completed':
                             statusText = 'Completed - Funds added to your account';
-                            statusClass = 'status-completed';
+                            statusClass = 'status-approved';
                             break;
                         case 'rejected':
                             statusText = `Rejected: ${req.rejectionReason || 'No reason provided'}`;
@@ -360,6 +364,53 @@
                             <strong>Date:</strong> ${new Date(req.createdAt).toLocaleString()}<br>
                             <strong>Status:</strong> <span class="${statusClass}">${statusText}</span>
                             ${actionHtml}
+                        </div>
+                    `;
+                }).join('');
+            } catch (error) {
+                console.error('Error:', error);
+            }
+        }
+
+        async function loadWithdrawalRequests() {
+            try {
+                const response = await fetch(`${API_URL}/api/my-withdrawal-requests`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await response.json();
+                
+                const container = document.getElementById('withdrawRequestsContainer');
+                
+                if (data.requests.length === 0) {
+                    container.innerHTML = '<p>No withdrawal requests yet.</p>';
+                    return;
+                }
+                
+                container.innerHTML = data.requests.map(req => {
+                    let statusText = '';
+                    let statusClass = '';
+                    
+                    switch(req.status) {
+                        case 'pending':
+                            statusText = 'Pending admin approval';
+                            statusClass = 'status-pending';
+                            break;
+                        case 'approved':
+                            statusText = 'Approved - Funds have been sent to your wallet';
+                            statusClass = 'status-approved';
+                            break;
+                        case 'rejected':
+                            statusText = `Rejected: ${req.rejectionReason || 'No reason provided'}`;
+                            statusClass = 'status-rejected';
+                            break;
+                    }
+                    
+                    return `
+                        <div class="request-item">
+                            <strong>Amount:</strong> $${req.amount}<br>
+                            <strong>Wallet:</strong> ${req.walletAddress.substring(0, 20)}...<br>
+                            <strong>Date:</strong> ${new Date(req.createdAt).toLocaleString()}<br>
+                            <strong>Status:</strong> <span class="${statusClass}">${statusText}</span>
                         </div>
                     `;
                 }).join('');
@@ -405,6 +456,52 @@
             }
         }
 
+        async function requestWithdraw() {
+            const amount = parseFloat(document.getElementById('withdrawAmount').value);
+            const walletAddress = document.getElementById('walletAddress').value;
+            const messageDiv = document.getElementById('withdrawMessage');
+
+            if (!amount || amount <= 0) {
+                messageDiv.className = 'message error';
+                messageDiv.innerText = 'Please enter a valid amount';
+                return;
+            }
+
+            if (!walletAddress) {
+                messageDiv.className = 'message error';
+                messageDiv.innerText = 'Please enter a wallet address';
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_URL}/api/request-withdraw`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ amount, walletAddress })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    messageDiv.className = 'message success';
+                    messageDiv.innerText = data.message;
+                    document.getElementById('withdrawAmount').value = '';
+                    document.getElementById('walletAddress').value = '';
+                    loadWithdrawalRequests();
+                    loadUserInfo();
+                } else {
+                    messageDiv.className = 'message error';
+                    messageDiv.innerText = data.message || 'Request failed';
+                }
+            } catch (error) {
+                messageDiv.className = 'message error';
+                messageDiv.innerText = 'Network error';
+            }
+        }
+
         async function confirmPayment(requestId) {
             const transactionId = document.getElementById(`txId_${requestId}`).value;
             const messageDiv = document.getElementById('depositMessage');
@@ -427,61 +524,13 @@
                 const data = await response.json();
 
                 if (response.ok) {
-                    messageDiv.className = 'message success';
-                    messageDiv.innerText = data.message;
+                    alert('Payment confirmed! Admin will verify and add funds.');
                     loadDepositRequests();
                 } else {
-                    messageDiv.className = 'message error';
-                    messageDiv.innerText = data.message || 'Confirmation failed';
+                    alert(data.message || 'Confirmation failed');
                 }
             } catch (error) {
-                messageDiv.className = 'message error';
-                messageDiv.innerText = 'Network error';
-            }
-        }
-
-        async function withdraw() {
-            const amount = parseFloat(document.getElementById('withdrawAmount').value);
-            const walletAddress = document.getElementById('walletAddress').value;
-            const messageDiv = document.getElementById('withdrawMessage');
-
-            if (!amount || amount <= 0) {
-                messageDiv.className = 'message error';
-                messageDiv.innerText = 'Please enter a valid amount';
-                return;
-            }
-
-            if (!walletAddress) {
-                messageDiv.className = 'message error';
-                messageDiv.innerText = 'Please enter a wallet address';
-                return;
-            }
-
-            try {
-                const response = await fetch(`${API_URL}/api/withdraw`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`
-                    },
-                    body: JSON.stringify({ amount, walletAddress })
-                });
-
-                const data = await response.json();
-
-                if (response.ok) {
-                    messageDiv.className = 'message success';
-                    messageDiv.innerText = data.message;
-                    document.getElementById('withdrawAmount').value = '';
-                    document.getElementById('walletAddress').value = '';
-                    loadUserInfo();
-                } else {
-                    messageDiv.className = 'message error';
-                    messageDiv.innerText = data.message || 'Withdrawal failed';
-                }
-            } catch (error) {
-                messageDiv.className = 'message error';
-                messageDiv.innerText = 'Network error';
+                alert('Network error');
             }
         }
 
@@ -492,6 +541,7 @@
 
         loadUserInfo();
         loadDepositRequests();
+        loadWithdrawalRequests();
     </script>
 </body>
 </html>
