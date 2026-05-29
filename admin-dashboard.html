@@ -95,6 +95,9 @@
         .btn-reject { background: #dc3545; color: white; }
         .btn-approve { background: #28a745; color: white; }
         .btn-limit { background: #ffc107; color: black; }
+        .btn-pause { background: #ffc107; color: black; }
+        .btn-delete { background: #dc3545; color: white; }
+        .btn-resume { background: #28a745; color: white; }
         .logout-btn {
             background: #e74c3c;
             color: white;
@@ -155,6 +158,9 @@
         .badge-completed { background: #28a745; }
         .badge-rejected { background: #dc3545; }
         .badge-approved { background: #28a745; }
+        .badge-paused { background: #ffc107; color: black; }
+        .badge-deleted { background: #dc3545; }
+        .badge-active { background: #28a745; }
         .wallet-type {
             background: #e74c3c;
             padding: 2px 6px;
@@ -259,13 +265,24 @@
                     <h3>Total Balance</h3>
                     <div class="stat-value" id="totalBalance">$0</div>
                 </div>
+                <div class="stat-card">
+                    <h3>Paused Users</h3>
+                    <div class="stat-value" id="pausedUsers">0</div>
+                </div>
             </div>
 
             <div class="users-table">
                 <h3 style="margin-bottom: 20px;">User Management</h3>
                 <table>
                     <thead>
-                        <tr><th>Email</th><th>Balance</th><th>Withdraw Limit</th><th>Joined</th><th>Actions</th></tr>
+                        <tr>
+                            <th>Email</th>
+                            <th>Balance</th>
+                            <th>Withdraw Limit</th>
+                            <th>Status</th>
+                            <th>Joined</th>
+                            <th>Actions</th>
+                        </tr>
                     </thead>
                     <tbody id="usersList"></tbody>
                 </table>
@@ -273,6 +290,7 @@
         </div>
     </div>
 
+    <!-- Provide Wallet Modal -->
     <div id="walletModal" class="modal">
         <div class="modal-content">
             <h3>Provide Wallet Address</h3>
@@ -283,6 +301,7 @@
         </div>
     </div>
 
+    <!-- Confirm Deposit Modal -->
     <div id="confirmDepositModal" class="modal">
         <div class="modal-content">
             <h3>Confirm Deposit</h3>
@@ -292,6 +311,7 @@
         </div>
     </div>
 
+    <!-- Reject Modal -->
     <div id="rejectModal" class="modal">
         <div class="modal-content">
             <h3>Reject Request</h3>
@@ -302,11 +322,23 @@
         </div>
     </div>
 
+    <!-- Pause/Resume User Modal -->
+    <div id="pauseModal" class="modal">
+        <div class="modal-content">
+            <h3 id="pauseModalTitle">Pause User Account</h3>
+            <p id="pauseUserInfo"></p>
+            <textarea id="pauseReason" placeholder="Reason for pausing" rows="3"></textarea>
+            <button class="btn-confirm-modal" onclick="confirmPause()">Confirm</button>
+            <button class="btn-cancel" onclick="closePauseModal()">Cancel</button>
+        </div>
+    </div>
+
     <script>
         let selectedRequestId = null;
         let selectedUserId = null;
         let selectedUserEmail = null;
         let currentRejectType = null;
+        let currentAction = null;
         const API_URL = 'https://crypto-trading-api-h6uc.onrender.com';
 
         function checkAdmin() {
@@ -357,8 +389,8 @@
                     switch(req.status) {
                         case 'pending':
                             statusBadge = '<span class="badge badge-pending">Pending</span>';
-                            actions = `<button class="btn btn-provide" onclick="openWalletModal('${req.id}', '${req.userEmail}', '${req.amount}', '${req.walletType}')">Provide Wallet</button>
-                                      <button class="btn btn-reject" onclick="openRejectModal('${req.id}', '${req.userEmail}', 'deposit')">Reject</button>`;
+                            actions = `<button class="btn btn-provide" onclick="openWalletModal('${req._id}', '${req.userEmail}', '${req.amount}', '${req.walletType}')">Provide Wallet</button>
+                                      <button class="btn btn-reject" onclick="openRejectModal('${req._id}', '${req.userEmail}', 'deposit')">Reject</button>`;
                             break;
                         case 'waiting_payment':
                             statusBadge = '<span class="badge badge-waiting">Waiting Payment</span>';
@@ -366,8 +398,8 @@
                             break;
                         case 'payment_sent':
                             statusBadge = '<span class="badge badge-sent">Payment Sent</span>';
-                            actions = `<button class="btn btn-confirm" onclick="openConfirmModal('${req.id}', '${req.userEmail}', '${req.amount}')">Confirm Deposit</button>
-                                      <button class="btn btn-reject" onclick="openRejectModal('${req.id}', '${req.userEmail}', 'deposit')">Reject</button>`;
+                            actions = `<button class="btn btn-confirm" onclick="openConfirmModal('${req._id}', '${req.userEmail}', '${req.amount}')">Confirm Deposit</button>
+                                      <button class="btn btn-reject" onclick="openRejectModal('${req._id}', '${req.userEmail}', 'deposit')">Reject</button>`;
                             break;
                         case 'completed':
                             statusBadge = '<span class="badge badge-completed">Completed</span>';
@@ -381,12 +413,12 @@
                     
                     tbody.innerHTML += `
                         <tr>
-                            <td>${new Date(req.createdAt).toLocaleString()}</td>
-                            <td>${req.userEmail}</td>
-                            <td>$${req.amount}</td>
+                            <td>${new Date(req.createdAt).toLocaleString()}</span></td>
+                            <td>${req.userEmail}</span></td>
+                            <td>$${req.amount}</span></td>
                             <td><span class="wallet-type">${req.walletType}</span></td>
-                            <td>${statusBadge}</td>
-                            <td>${actions}</td>
+                            <td>${statusBadge}</span></td>
+                            <td>${actions}</span></td>
                         </tr>
                     `;
                 });
@@ -416,8 +448,8 @@
                     switch(req.status) {
                         case 'pending':
                             statusBadge = '<span class="badge badge-pending">Pending</span>';
-                            actions = `<button class="btn btn-approve" onclick="approveWithdrawal('${req.id}')">Approve</button>
-                                      <button class="btn btn-reject" onclick="openRejectModal('${req.id}', '${req.userEmail}', 'withdrawal')">Reject</button>`;
+                            actions = `<button class="btn btn-approve" onclick="approveWithdrawal('${req._id}')">Approve</button>
+                                      <button class="btn btn-reject" onclick="openRejectModal('${req._id}', '${req.userEmail}', 'withdrawal')">Reject</button>`;
                             break;
                         case 'approved':
                             statusBadge = '<span class="badge badge-approved">Approved</span>';
@@ -431,13 +463,13 @@
                     
                     tbody.innerHTML += `
                         <tr>
-                            <td>${new Date(req.createdAt).toLocaleString()}</td>
-                            <td>${req.userEmail}</td>
-                            <td>$${req.amount}</td>
+                            <td>${new Date(req.createdAt).toLocaleString()}</span></td>
+                            <td>${req.userEmail}</span></td>
+                            <td>$${req.amount}</span></td>
                             <td><span class="wallet-type">${req.walletType}</span></td>
-                            <td>${req.walletAddress ? req.walletAddress.substring(0, 30) + '...' : 'N/A'}</td>
-                            <td>${statusBadge}</td>
-                            <td>${actions}</td>
+                            <td>${req.walletAddress ? req.walletAddress.substring(0, 30) + '...' : 'N/A'}</span></td>
+                            <td>${statusBadge}</span></td>
+                            <td>${actions}</span></td>
                         </tr>
                     `;
                 });
@@ -462,207 +494,22 @@
                 data.orders.forEach(order => {
                     tbody.innerHTML += `
                         <tr>
-                            <td>${new Date(order.createdAt).toLocaleString()}</td>
-                            <td>${order.userEmail || 'User'}</td>
+                            <td>${new Date(order.createdAt).toLocaleString()}</span></td>
+                            <td>${order.userEmail || 'User'}</span></td>
                             <td>${order.symbol}/USD</span></td>
                             <td><span style="color: ${order.side === 'buy' ? '#28a745' : '#dc3545'}">${order.side.toUpperCase()}</span></td>
-                            <td>$${order.amount}</td>
+                            <td>$${order.amount}</span></td>
                             <td>${order.timeframe} min</span></td>
                             <td>
-                                <input type="number" id="profit_${order.id}" placeholder="Profit %" style="width:80px; padding:5px; border-radius:3px;">
-                                <button class="btn btn-approve" onclick="approveExecution('${order.id}')">Approve</button>
-                                <button class="btn btn-reject" onclick="rejectExecution('${order.id}')">Reject</button>
-                            </td>
+                                <input type="number" id="profit_${order._id}" placeholder="Profit %" style="width:80px; padding:5px; border-radius:3px;">
+                                <button class="btn btn-approve" onclick="approveExecution('${order._id}')">Approve</button>
+                                <button class="btn btn-reject" onclick="rejectExecution('${order._id}')">Reject</button>
+                             </span>
                         </tr>
                     `;
                 });
             } catch (error) {
                 console.error('Error:', error);
-            }
-        }
-
-        async function approveWithdrawal(requestId) {
-            if (!confirm('Approve this withdrawal?')) return;
-            
-            try {
-                const token = localStorage.getItem('adminToken');
-                const response = await fetch(`${API_URL}/api/admin/approve-withdrawal`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`
-                    },
-                    body: JSON.stringify({ requestId })
-                });
-                
-                if (response.ok) {
-                    alert('Withdrawal approved!');
-                    loadWithdrawalRequests();
-                } else {
-                    alert('Failed');
-                }
-            } catch (error) {
-                alert('Network error');
-            }
-        }
-
-        function openWalletModal(requestId, userEmail, amount, walletType) {
-            selectedRequestId = requestId;
-            document.getElementById('walletUserInfo').innerHTML = `User: ${userEmail}<br>Amount: $${amount}<br>Wallet Type: ${walletType}`;
-            document.getElementById('walletModal').style.display = 'flex';
-        }
-
-        async function confirmProvideWallet() {
-            const walletAddress = document.getElementById('walletAddress').value;
-            
-            if (!walletAddress) {
-                alert('Please enter a wallet address');
-                return;
-            }
-            
-            try {
-                const token = localStorage.getItem('adminToken');
-                const response = await fetch(`${API_URL}/api/admin/provide-wallet`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`
-                    },
-                    body: JSON.stringify({ requestId: selectedRequestId, walletAddress })
-                });
-                
-                if (response.ok) {
-                    alert('Wallet address provided!');
-                    closeWalletModal();
-                    loadDepositRequests();
-                } else {
-                    alert('Failed');
-                }
-            } catch (error) {
-                alert('Network error');
-            }
-        }
-
-        function openConfirmModal(requestId, userEmail, amount) {
-            selectedRequestId = requestId;
-            document.getElementById('confirmDepositInfo').innerHTML = `User: ${userEmail}<br>Amount: $${amount}`;
-            document.getElementById('confirmDepositModal').style.display = 'flex';
-        }
-
-        async function confirmDeposit() {
-            try {
-                const token = localStorage.getItem('adminToken');
-                const response = await fetch(`${API_URL}/api/admin/confirm-deposit`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`
-                    },
-                    body: JSON.stringify({ requestId: selectedRequestId })
-                });
-                
-                if (response.ok) {
-                    alert('Deposit confirmed! Funds added.');
-                    closeConfirmModal();
-                    loadDepositRequests();
-                } else {
-                    alert('Failed');
-                }
-            } catch (error) {
-                alert('Network error');
-            }
-        }
-
-        function openRejectModal(requestId, userEmail, type) {
-            selectedRequestId = requestId;
-            currentRejectType = type;
-            document.getElementById('rejectUserInfo').innerHTML = `User: ${userEmail}`;
-            document.getElementById('rejectModal').style.display = 'flex';
-        }
-
-        async function confirmReject() {
-            const reason = document.getElementById('rejectReason').value;
-            const endpoint = currentRejectType === 'deposit' ? '/api/admin/reject-deposit' : '/api/admin/reject-withdrawal';
-            
-            try {
-                const token = localStorage.getItem('adminToken');
-                const response = await fetch(`${API_URL}${endpoint}`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`
-                    },
-                    body: JSON.stringify({ requestId: selectedRequestId, reason })
-                });
-                
-                if (response.ok) {
-                    alert('Request rejected');
-                    closeRejectModal();
-                    if (currentRejectType === 'deposit') loadDepositRequests();
-                    else loadWithdrawalRequests();
-                } else {
-                    alert('Failed');
-                }
-            } catch (error) {
-                alert('Network error');
-            }
-        }
-
-        async function approveExecution(orderId) {
-            const profitPercent = document.getElementById(`profit_${orderId}`).value;
-            
-            if (!profitPercent) {
-                alert('Please enter profit/loss percentage');
-                return;
-            }
-            
-            try {
-                const token = localStorage.getItem('adminToken');
-                const response = await fetch(`${API_URL}/api/admin/approve-execution`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`
-                    },
-                    body: JSON.stringify({ orderId, profitPercentage: parseFloat(profitPercent) })
-                });
-                
-                const data = await response.json();
-                
-                if (response.ok) {
-                    alert(`Order executed! Profit: $${data.profit.toFixed(2)}`);
-                    loadPendingExecutions();
-                } else {
-                    alert(data.message || 'Failed');
-                }
-            } catch (error) {
-                alert('Network error');
-            }
-        }
-
-        async function rejectExecution(orderId) {
-            const reason = prompt('Reason for rejection:');
-            if (!reason) return;
-            
-            try {
-                const token = localStorage.getItem('adminToken');
-                const response = await fetch(`${API_URL}/api/admin/reject-execution`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`
-                    },
-                    body: JSON.stringify({ orderId, reason })
-                });
-                
-                if (response.ok) {
-                    alert('Order rejected');
-                    loadPendingExecutions();
-                } else {
-                    alert('Failed');
-                }
-            } catch (error) {
-                alert('Network error');
             }
         }
 
@@ -676,22 +523,116 @@
                 
                 document.getElementById('totalUsers').textContent = data.totalUsers;
                 document.getElementById('totalBalance').textContent = `$${data.totalBalance.toFixed(2)}`;
+                document.getElementById('pausedUsers').textContent = data.pausedUsers || 0;
                 
                 const tbody = document.getElementById('usersList');
                 tbody.innerHTML = '';
+                
                 data.users.forEach(user => {
+                    let statusBadge = '';
+                    let actionButtons = '';
+                    
+                    if (user.isPaused) {
+                        statusBadge = '<span class="badge badge-paused">Paused</span>';
+                        actionButtons = `
+                            <button class="btn btn-resume" onclick="resumeUser('${user.id}')">Resume</button>
+                            <button class="btn btn-delete" onclick="deleteUser('${user.id}')">Delete</button>
+                        `;
+                    } else if (user.isDeleted) {
+                        statusBadge = '<span class="badge badge-deleted">Deleted</span>';
+                        actionButtons = `<span style="color:#888;">Deleted</span>`;
+                    } else {
+                        statusBadge = '<span class="badge badge-active">Active</span>';
+                        actionButtons = `
+                            <button class="btn btn-pause" onclick="openPauseModal('${user.id}', '${user.email}')">Pause</button>
+                            <button class="btn btn-delete" onclick="deleteUser('${user.id}')">Delete</button>
+                        `;
+                    }
+                    
                     tbody.innerHTML += `
                         <tr>
-                            <td>${user.email}</td>
+                            <td>${user.email}</span></td>
                             <td>$${user.balance.toFixed(2)}</span></td>
                             <td>$${user.withdrawLimit.toFixed(2)}</span></td>
-                            <td>${new Date(user.createdAt).toLocaleDateString()}</td>
-                            <td><button class="btn btn-limit" onclick="openLimitModal('${user.id}', '${user.email}')">Set Limit</button></td>
+                            <td>${statusBadge}</span></td>
+                            <td>${new Date(user.createdAt).toLocaleDateString()}</span></td>
+                            <td>
+                                <button class="btn btn-limit" onclick="openLimitModal('${user.id}', '${user.email}')">Set Limit</button>
+                                ${actionButtons}
+                             </span>
                         </tr>
                     `;
                 });
             } catch (error) {
                 console.error('Error:', error);
+            }
+        }
+
+        // ============ USER ACTIONS ============
+        
+        async function deleteUser(userId) {
+            if (!confirm('⚠️ WARNING: This will PERMANENTLY DELETE the user account. All their data will be removed. This action CANNOT be undone! Are you ABSOLUTELY sure?')) return;
+            
+            const token = localStorage.getItem('adminToken');
+            const response = await fetch(`${API_URL}/api/admin/delete-user/${userId}`, {
+                method: 'DELETE',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            
+            if (response.ok) {
+                alert('User deleted successfully');
+                loadUsers();
+            } else {
+                const data = await response.json();
+                alert(data.message || 'Failed to delete user');
+            }
+        }
+
+        function openPauseModal(userId, userEmail) {
+            selectedUserId = userId;
+            selectedUserEmail = userEmail;
+            document.getElementById('pauseModalTitle').innerText = 'Pause User Account';
+            document.getElementById('pauseUserInfo').innerHTML = `User: ${userEmail}<br><br>The user will NOT be able to:<br>- Login to their account<br>- Place trades<br>- Request withdrawals<br><br>Their balance will be preserved.`;
+            document.getElementById('pauseModal').style.display = 'flex';
+            currentAction = 'pause';
+        }
+
+        async function confirmPause() {
+            const reason = document.getElementById('pauseReason').value;
+            
+            const token = localStorage.getItem('adminToken');
+            const response = await fetch(`${API_URL}/api/admin/pause-user/${selectedUserId}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ reason })
+            });
+            
+            if (response.ok) {
+                alert(`User ${selectedUserEmail} has been paused`);
+                closePauseModal();
+                loadUsers();
+            } else {
+                alert('Failed to pause user');
+            }
+        }
+
+        async function resumeUser(userId) {
+            if (!confirm('Resume this user account? They will be able to login and trade again.')) return;
+            
+            const token = localStorage.getItem('adminToken');
+            const response = await fetch(`${API_URL}/api/admin/resume-user/${userId}`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            
+            if (response.ok) {
+                alert('User resumed successfully');
+                loadUsers();
+            } else {
+                alert('Failed to resume user');
             }
         }
 
@@ -707,27 +648,181 @@
                 alert('Please enter a valid amount');
                 return;
             }
-            try {
-                const token = localStorage.getItem('adminToken');
-                const response = await fetch(`${API_URL}/api/admin/update-limit`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`
-                    },
-                    body: JSON.stringify({ userId: selectedUserId, newLimit })
-                });
-                if (response.ok) {
-                    alert(`Withdrawal limit updated to $${newLimit}`);
-                    loadUsers();
-                } else {
-                    alert('Failed');
-                }
-            } catch (error) {
-                alert('Network error');
+            const token = localStorage.getItem('adminToken');
+            const response = await fetch(`${API_URL}/api/admin/update-limit`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ userId: selectedUserId, newLimit })
+            });
+            if (response.ok) {
+                alert(`Withdrawal limit updated to $${newLimit}`);
+                loadUsers();
+            } else {
+                alert('Failed');
             }
         }
 
+        // ============ WITHDRAWAL ACTIONS ============
+        
+        async function approveWithdrawal(requestId) {
+            if (!confirm('Approve this withdrawal?')) return;
+            
+            const token = localStorage.getItem('adminToken');
+            const response = await fetch(`${API_URL}/api/admin/approve-withdrawal`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ requestId })
+            });
+            
+            if (response.ok) {
+                alert('Withdrawal approved!');
+                loadWithdrawalRequests();
+            } else {
+                alert('Failed');
+            }
+        }
+
+        // ============ DEPOSIT ACTIONS ============
+        
+        function openWalletModal(requestId, userEmail, amount, walletType) {
+            selectedRequestId = requestId;
+            document.getElementById('walletUserInfo').innerHTML = `User: ${userEmail}<br>Amount: $${amount}<br>Wallet Type: ${walletType}`;
+            document.getElementById('walletModal').style.display = 'flex';
+        }
+
+        async function confirmProvideWallet() {
+            const walletAddress = document.getElementById('walletAddress').value;
+            if (!walletAddress) {
+                alert('Please enter a wallet address');
+                return;
+            }
+            const token = localStorage.getItem('adminToken');
+            const response = await fetch(`${API_URL}/api/admin/provide-wallet`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ requestId: selectedRequestId, walletAddress })
+            });
+            if (response.ok) {
+                alert('Wallet address provided!');
+                closeWalletModal();
+                loadDepositRequests();
+            } else {
+                alert('Failed');
+            }
+        }
+
+        function openConfirmModal(requestId, userEmail, amount) {
+            selectedRequestId = requestId;
+            document.getElementById('confirmDepositInfo').innerHTML = `User: ${userEmail}<br>Amount: $${amount}`;
+            document.getElementById('confirmDepositModal').style.display = 'flex';
+        }
+
+        async function confirmDeposit() {
+            const token = localStorage.getItem('adminToken');
+            const response = await fetch(`${API_URL}/api/admin/confirm-deposit`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ requestId: selectedRequestId })
+            });
+            if (response.ok) {
+                alert('Deposit confirmed! Funds added.');
+                closeConfirmModal();
+                loadDepositRequests();
+            } else {
+                alert('Failed');
+            }
+        }
+
+        function openRejectModal(requestId, userEmail, type) {
+            selectedRequestId = requestId;
+            currentRejectType = type;
+            document.getElementById('rejectUserInfo').innerHTML = `User: ${userEmail}`;
+            document.getElementById('rejectModal').style.display = 'flex';
+        }
+
+        async function confirmReject() {
+            const reason = document.getElementById('rejectReason').value;
+            const endpoint = currentRejectType === 'deposit' ? '/api/admin/reject-deposit' : '/api/admin/reject-withdrawal';
+            
+            const token = localStorage.getItem('adminToken');
+            const response = await fetch(`${API_URL}${endpoint}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ requestId: selectedRequestId, reason })
+            });
+            if (response.ok) {
+                alert('Request rejected');
+                closeRejectModal();
+                if (currentRejectType === 'deposit') loadDepositRequests();
+                else loadWithdrawalRequests();
+            } else {
+                alert('Failed');
+            }
+        }
+
+        // ============ EXECUTION ACTIONS ============
+        
+        async function approveExecution(orderId) {
+            const profitPercent = document.getElementById(`profit_${orderId}`).value;
+            if (!profitPercent) {
+                alert('Please enter profit/loss percentage');
+                return;
+            }
+            const token = localStorage.getItem('adminToken');
+            const response = await fetch(`${API_URL}/api/admin/approve-execution`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ orderId, profitPercentage: parseFloat(profitPercent) })
+            });
+            const data = await response.json();
+            if (response.ok) {
+                alert(`Order executed! Profit: $${data.profit?.toFixed(2) || 0}`);
+                loadPendingExecutions();
+            } else {
+                alert(data.message || 'Failed');
+            }
+        }
+
+        async function rejectExecution(orderId) {
+            const reason = prompt('Reason for rejection:');
+            if (!reason) return;
+            const token = localStorage.getItem('adminToken');
+            const response = await fetch(`${API_URL}/api/admin/reject-execution`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ orderId, reason })
+            });
+            if (response.ok) {
+                alert('Order rejected');
+                loadPendingExecutions();
+            } else {
+                alert('Failed');
+            }
+        }
+
+        // ============ MODAL FUNCTIONS ============
+        
         function closeWalletModal() {
             document.getElementById('walletModal').style.display = 'none';
             document.getElementById('walletAddress').value = '';
@@ -740,6 +835,11 @@
         function closeRejectModal() {
             document.getElementById('rejectModal').style.display = 'none';
             document.getElementById('rejectReason').value = '';
+        }
+
+        function closePauseModal() {
+            document.getElementById('pauseModal').style.display = 'none';
+            document.getElementById('pauseReason').value = '';
         }
 
         function logout() {
