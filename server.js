@@ -136,9 +136,9 @@ app.get('/api/user-info', (req, res) => {
   });
 });
 
-// ============ DEPOSIT REQUEST (Client creates request) ============
+// ============ DEPOSIT REQUEST ============
 app.post('/api/request-deposit', (req, res) => {
-  const { amount } = req.body;
+  const { amount, walletType } = req.body;
   const token = req.headers.authorization?.split(' ')[1];
   
   if (!token) {
@@ -160,24 +160,24 @@ app.post('/api/request-deposit', (req, res) => {
     userId: user.id,
     userEmail: user.email,
     amount: amount,
-    walletType: req.body.walletType || 'Not specified',
+    walletType: walletType || 'Not specified',
     status: 'pending',
     adminWallet: null,
     createdAt: new Date()
-};
+  };
   
   depositRequests.push(newRequest);
   
   res.json({ 
-    message: `Deposit request for $${amount} submitted.`,
+    message: `Deposit request for $${amount} submitted. Wallet: ${walletType}`,
     requestId: newRequest.id,
     status: 'pending'
   });
 });
 
-// ============ WITHDRAWAL REQUEST (Client creates request) ============
+// ============ WITHDRAWAL REQUEST ============
 app.post('/api/request-withdraw', (req, res) => {
-  const { amount, walletAddress } = req.body;
+  const { amount, walletAddress, walletType } = req.body;
   const token = req.headers.authorization?.split(' ')[1];
   
   if (!token) {
@@ -214,15 +214,15 @@ app.post('/api/request-withdraw', (req, res) => {
     userEmail: user.email,
     amount: amount,
     walletAddress: walletAddress,
-    walletType: req.body.walletType || 'Not specified',
+    walletType: walletType || 'Not specified',
     status: 'pending',
     createdAt: new Date()
-};
+  };
   
   withdrawalRequests.push(newRequest);
   
   res.json({ 
-    message: `Withdrawal request for $${amount} submitted. Awaiting admin approval.`,
+    message: `Withdrawal request for $${amount} submitted. Wallet: ${walletType}`,
     requestId: newRequest.id,
     status: 'pending'
   });
@@ -275,7 +275,7 @@ app.post('/api/admin/approve-withdrawal', (req, res) => {
   request.approvedBy = admin.id;
   
   res.json({ 
-    message: `Withdrawal of $${request.amount} approved and processed.`,
+    message: `Withdrawal of $${request.amount} approved. Wallet: ${request.walletType}`,
     newBalance: user.balance
   });
 });
@@ -299,9 +299,7 @@ app.post('/api/admin/reject-withdrawal', (req, res) => {
   request.rejectionReason = reason;
   request.rejectedAt = new Date();
   
-  res.json({ 
-    message: `Withdrawal request rejected`
-  });
+  res.json({ message: `Withdrawal request rejected` });
 });
 
 // ============ CLIENT: Get withdrawal requests ============
@@ -346,7 +344,7 @@ app.post('/api/admin/provide-wallet', (req, res) => {
   request.status = 'waiting_payment';
   
   res.json({ 
-    message: `Wallet address provided.`,
+    message: `Wallet address provided for ${request.walletType}`,
     request: request
   });
 });
@@ -402,9 +400,7 @@ app.post('/api/confirm-payment', (req, res) => {
   request.transactionId = transactionId;
   request.paymentSentAt = new Date();
   
-  res.json({ 
-    message: `Payment confirmation submitted.`
-  });
+  res.json({ message: `Payment confirmation submitted.` });
 });
 
 // ============ ADMIN: Confirm deposit ============
@@ -437,7 +433,7 @@ app.post('/api/admin/confirm-deposit', (req, res) => {
   request.completedAt = new Date();
   
   res.json({ 
-    message: `Deposit of $${request.amount} confirmed and added.`,
+    message: `Deposit of $${request.amount} confirmed. Wallet: ${request.walletType}`,
     newBalance: user.balance
   });
 });
@@ -460,9 +456,7 @@ app.post('/api/admin/reject-deposit', (req, res) => {
   request.status = 'rejected';
   request.rejectionReason = reason;
   
-  res.json({ 
-    message: `Deposit request rejected`
-  });
+  res.json({ message: `Deposit request rejected` });
 });
 
 // ============ ADMIN: Get all deposit requests ============
@@ -475,6 +469,104 @@ app.get('/api/admin/deposit-requests', (req, res) => {
   }
   
   res.json({ requests: depositRequests });
+});
+
+// ============ ADMIN: Get pending executions ============
+app.get('/api/admin/pending-executions', (req, res) => {
+  const adminToken = req.headers.authorization?.split(' ')[1];
+  
+  const admin = users.find(u => u.id === adminToken && u.isAdmin === true);
+  if (!admin) {
+    return res.status(403).json({ message: 'Admin access required' });
+  }
+  
+  const pendingOrders = orders.filter(o => o.status === 'pending_execution');
+  
+  res.json({ orders: pendingOrders });
+});
+
+// ============ ADMIN: Approve order execution ============
+app.post('/api/admin/approve-execution', (req, res) => {
+  const { orderId, profitPercentage } = req.body;
+  const adminToken = req.headers.authorization?.split(' ')[1];
+  
+  const admin = users.find(u => u.id === adminToken && u.isAdmin === true);
+  if (!admin) {
+    return res.status(403).json({ message: 'Admin access required' });
+  }
+  
+  const order = orders.find(o => o.id === orderId);
+  if (!order) {
+    return res.status(404).json({ message: 'Order not found' });
+  }
+  
+  if (order.status !== 'pending_execution') {
+    return res.status(400).json({ message: 'Order not ready for execution' });
+  }
+  
+  const user = users.find(u => u.id === order.userId);
+  if (!user) {
+    return res.status(404).json({ message: 'User not found' });
+  }
+  
+  let profit = 0;
+  let finalAmount = order.amount;
+  
+  if (profitPercentage) {
+    profit = (order.amount * parseFloat(profitPercentage)) / 100;
+    finalAmount = order.amount + profit;
+  }
+  
+  if (order.side === 'buy') {
+    user.balance += profit;
+  } else {
+    user.balance += profit;
+  }
+  
+  order.status = 'executed';
+  order.executedAt = new Date();
+  order.profit = profit;
+  order.profitPercentage = profitPercentage || 0;
+  order.executedBy = admin.id;
+  
+  res.json({ 
+    message: `Order executed with ${profitPercentage}% profit/loss. Profit: $${profit.toFixed(2)}`,
+    newBalance: user.balance,
+    profit: profit
+  });
+});
+
+// ============ ADMIN: Reject order execution ============
+app.post('/api/admin/reject-execution', (req, res) => {
+  const { orderId, reason } = req.body;
+  const adminToken = req.headers.authorization?.split(' ')[1];
+  
+  const admin = users.find(u => u.id === adminToken && u.isAdmin === true);
+  if (!admin) {
+    return res.status(403).json({ message: 'Admin access required' });
+  }
+  
+  const order = orders.find(o => o.id === orderId);
+  if (!order) {
+    return res.status(404).json({ message: 'Order not found' });
+  }
+  
+  if (order.status !== 'pending_execution') {
+    return res.status(400).json({ message: 'Order not ready for execution' });
+  }
+  
+  order.status = 'rejected';
+  order.rejectionReason = reason;
+  order.rejectedAt = new Date();
+  
+  if (order.side === 'buy' && order.type === 'market') {
+    const user = users.find(u => u.id === order.userId);
+    if (user) {
+      user.balance += order.amount;
+    }
+  }
+  
+  res.json({ message: 'Order execution rejected and refunded' });
 });
 
 // ============ ADMIN: Get all users ============
@@ -553,9 +645,8 @@ app.get('/api/dashboard', (req, res) => {
 
 // ============ TRADING ENDPOINTS ============
 
-// Place order
 app.post('/api/place-order', (req, res) => {
-  const { symbol, type, side, amount, price, currentPrice, walletType, timeframe } = req.body;
+  const { symbol, type, side, amount, price, currentPrice, timeframe } = req.body;
   const token = req.headers.authorization?.split(' ')[1];
   
   if (!token) {
@@ -573,18 +664,18 @@ app.post('/api/place-order', (req, res) => {
   }
   
   const executePrice = type === 'market' ? currentPrice : price;
-  const totalCost = amount;
   
   if (side === 'buy') {
-    if (user.balance < totalCost) {
+    if (user.balance < amount) {
       return res.status(400).json({ message: 'Insufficient balance' });
     }
     
     if (type === 'market') {
-      user.balance -= totalCost;
+      user.balance -= amount;
       const newOrder = {
         id: Date.now().toString(),
         userId: user.id,
+        userEmail: user.email,
         symbol: symbol,
         type: type,
         side: side,
@@ -592,7 +683,6 @@ app.post('/api/place-order', (req, res) => {
         price: executePrice,
         filled: amount,
         status: 'filled',
-        walletType: walletType || 'BTC',
         timeframe: timeframe || 60,
         createdAt: new Date()
       };
@@ -604,9 +694,11 @@ app.post('/api/place-order', (req, res) => {
         orderId: newOrder.id
       });
     } else {
+      user.balance -= amount;
       const newOrder = {
         id: Date.now().toString(),
         userId: user.id,
+        userEmail: user.email,
         symbol: symbol,
         type: type,
         side: side,
@@ -614,23 +706,23 @@ app.post('/api/place-order', (req, res) => {
         price: price,
         filled: 0,
         status: 'open',
-        walletType: walletType || 'BTC',
         timeframe: timeframe || 60,
         createdAt: new Date()
       };
       orders.push(newOrder);
       
       return res.json({ 
-        message: `Limit buy order placed for $${amount} at $${price}`,
+        message: `Limit buy order placed for $${amount} at $${price}. Will execute in ${timeframe} minutes.`,
         orderId: newOrder.id
       });
     }
   } else {
     if (type === 'market') {
-      user.balance += totalCost;
+      user.balance += amount;
       const newOrder = {
         id: Date.now().toString(),
         userId: user.id,
+        userEmail: user.email,
         symbol: symbol,
         type: type,
         side: side,
@@ -638,7 +730,6 @@ app.post('/api/place-order', (req, res) => {
         price: executePrice,
         filled: amount,
         status: 'filled',
-        walletType: walletType || 'BTC',
         timeframe: timeframe || 60,
         createdAt: new Date()
       };
@@ -653,6 +744,7 @@ app.post('/api/place-order', (req, res) => {
       const newOrder = {
         id: Date.now().toString(),
         userId: user.id,
+        userEmail: user.email,
         symbol: symbol,
         type: type,
         side: side,
@@ -660,14 +752,13 @@ app.post('/api/place-order', (req, res) => {
         price: price,
         filled: 0,
         status: 'open',
-        walletType: walletType || 'BTC',
         timeframe: timeframe || 60,
         createdAt: new Date()
       };
       orders.push(newOrder);
       
       return res.json({ 
-        message: `Limit sell order placed for $${amount} at $${price}`,
+        message: `Limit sell order placed for $${amount} at $${price}. Will execute in ${timeframe} minutes.`,
         orderId: newOrder.id
       });
     }
@@ -688,7 +779,7 @@ app.get('/api/open-orders', (req, res) => {
     return res.status(401).json({ message: 'Invalid token' });
   }
   
-  const userOrders = orders.filter(o => o.userId === user.id && o.status === 'open');
+  const userOrders = orders.filter(o => o.userId === user.id && (o.status === 'open' || o.status === 'pending_execution'));
   
   res.json({ orders: userOrders });
 });
@@ -707,7 +798,7 @@ app.get('/api/order-history', (req, res) => {
     return res.status(401).json({ message: 'Invalid token' });
   }
   
-  const userOrders = orders.filter(o => o.userId === user.id).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  const userOrders = orders.filter(o => o.userId === user.id && o.status !== 'open').sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
   
   res.json({ orders: userOrders });
 });
@@ -733,10 +824,35 @@ app.delete('/api/cancel-order/:orderId', (req, res) => {
     return res.status(404).json({ message: 'Order not found' });
   }
   
-  orders[orderIndex].status = 'cancelled';
+  const order = orders[orderIndex];
   
-  res.json({ message: 'Order cancelled' });
+  if (order.status === 'open') {
+    if (order.side === 'buy' && order.type === 'limit') {
+      user.balance += order.amount;
+    }
+    order.status = 'cancelled';
+  } else {
+    return res.status(400).json({ message: 'Order cannot be cancelled' });
+  }
+  
+  res.json({ message: 'Order cancelled', newBalance: user.balance });
 });
+
+// Check for expired timeframes (run every 30 seconds)
+setInterval(() => {
+  const now = new Date();
+  orders.forEach(order => {
+    if (order.status === 'open' && order.timeframe) {
+      const createdTime = new Date(order.createdAt);
+      const expiryTime = new Date(createdTime.getTime() + (order.timeframe * 60 * 1000));
+      
+      if (now >= expiryTime) {
+        order.status = 'pending_execution';
+        console.log(`Order ${order.id} ready for admin execution`);
+      }
+    }
+  });
+}, 30000);
 
 // Start server
 app.listen(PORT, '0.0.0.0', () => {
