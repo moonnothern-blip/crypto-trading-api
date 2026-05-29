@@ -76,11 +76,10 @@
     </div>
 
     <script>
-        async function adminLogin() {
+        function adminLogin() {
             const email = document.getElementById('adminEmail').value;
             const password = document.getElementById('adminPassword').value;
             
-            // Hardcoded admin credentials (change this later)
             if (email === 'admin@rumble.com' && password === 'admin123') {
                 localStorage.setItem('adminToken', 'admin-secret-token');
                 window.location.href = '/admin-dashboard';

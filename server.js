@@ -13,8 +13,12 @@ app.use(express.static('.'));
 let users = [];
 
 // ============ HTML PAGES ============
-app.get('/admin', (req, res) => {
-  res.sendFile(path.join(__dirname, 'admin.html'));
+app.get('/admin-login', (req, res) => {
+  res.sendFile(path.join(__dirname, 'admin-login.html'));
+});
+
+app.get('/admin-dashboard', (req, res) => {
+  res.sendFile(path.join(__dirname, 'admin-dashboard.html'));
 });
 
 app.get('/dashboard', (req, res) => {
@@ -27,14 +31,6 @@ app.get('/trading', (req, res) => {
 
 app.get('/wallet', (req, res) => {
   res.sendFile(path.join(__dirname, 'wallet.html'));
-});
-
-app.get('/admin-login', (req, res) => {
-  res.sendFile(path.join(__dirname, 'admin-login.html'));
-});
-
-app.get('/admin-dashboard', (req, res) => {
-  res.sendFile(path.join(__dirname, 'admin-dashboard.html'));
 });
 
 app.get('/', (req, res) => {
@@ -110,12 +106,6 @@ app.get('/api/dashboard', (req, res) => {
 
 // Admin users list
 app.get('/api/admin/users', (req, res) => {
-  const token = req.headers.authorization?.split(' ')[1];
-  
-  if (!token) {
-    return res.status(401).json({ message: 'Unauthorized' });
-  }
-  
   res.json({
     users: users,
     totalUsers: users.length,
