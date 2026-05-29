@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Login - Rumble Incorporated</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .login-container {
+            background: white;
+            padding: 40px;
+            border-radius: 20px;
+            width: 400px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        .logo {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .logo h1 {
+            font-size: 28px;
+            color: #1a1a2e;
+        }
+        .logo span {
+            color: #e74c3c;
+            font-size: 12px;
+        }
+        input {
+            width: 100%;
+            padding: 15px;
+            margin: 10px 0;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 16px;
+        }
+        button {
+            width: 100%;
+            padding: 15px;
+            background: #e74c3c;
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        .error {
+            color: red;
+            text-align: center;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <div class="logo">
+            <h1>RUMBLE</h1>
+            <span>ADMIN PORTAL</span>
+        </div>
+        <input type="text" id="adminEmail" placeholder="Admin Email">
+        <input type="password" id="adminPassword" placeholder="Password">
+        <button onclick="adminLogin()">Login to Admin</button>
+        <div id="errorMsg" class="error"></div>
+    </div>
+
+    <script>
+        async function adminLogin() {
+            const email = document.getElementById('adminEmail').value;
+            const password = document.getElementById('adminPassword').value;
+            
+            // Hardcoded admin credentials (change this later)
+            if (email === 'admin@rumble.com' && password === 'admin123') {
+                localStorage.setItem('adminToken', 'admin-secret-token');
+                window.location.href = '/admin-dashboard';
+            } else {
+                document.getElementById('errorMsg').innerText = 'Invalid admin credentials';
+            }
+        }
+    </script>
+</body>
+</html>

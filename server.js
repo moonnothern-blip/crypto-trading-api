@@ -29,6 +29,14 @@ app.get('/wallet', (req, res) => {
   res.sendFile(path.join(__dirname, 'wallet.html'));
 });
 
+app.get('/admin-login', (req, res) => {
+  res.sendFile(path.join(__dirname, 'admin-login.html'));
+});
+
+app.get('/admin-dashboard', (req, res) => {
+  res.sendFile(path.join(__dirname, 'admin-dashboard.html'));
+});
+
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
