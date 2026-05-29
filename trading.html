@@ -185,12 +185,23 @@
             font-weight: bold;
         }
 
-        .order-input input, .order-input select {
+        .order-input input {
             width: 100%;
             padding: 12px;
             border: 2px solid #e0e0e0;
             border-radius: 8px;
             font-size: 16px;
+        }
+
+        .order-input input:focus {
+            outline: none;
+            border-color: #e74c3c;
+        }
+
+        .info-text {
+            font-size: 12px;
+            color: #888;
+            margin-top: 5px;
         }
 
         .timeframe-buttons {
@@ -341,16 +352,9 @@
                 </div>
 
                 <div class="order-input">
-                    <label>📊 Order Type</label>
-                    <select id="orderType">
-                        <option value="market">Market Order (Execute Now)</option>
-                        <option value="limit">Limit Order (Set Your Price)</option>
-                    </select>
-                </div>
-
-                <div class="order-input" id="limitPriceInput" style="display:none;">
                     <label>💰 Limit Price (USD)</label>
                     <input type="number" id="limitPrice" placeholder="Enter your desired price">
+                    <div class="info-text">Set the price you want to buy/sell at</div>
                 </div>
 
                 <div class="order-input">
@@ -372,6 +376,7 @@
                         <button class="timeframe-btn" data-minutes="30">30 min</button>
                         <button class="timeframe-btn active" data-minutes="60">1 hour</button>
                     </div>
+                    <div class="info-text">Order will execute automatically after selected time. Admin will approve execution.</div>
                 </div>
 
                 <button class="place-order-btn" id="placeOrderBtn" onclick="placeOrder()">Place Buy Order</button>
@@ -466,8 +471,11 @@
 
         function updateQuantity() {
             const amount = parseFloat(document.getElementById('amount').value);
-            if (amount && currentPrice && currentPrice > 0) {
-                const quantity = amount / currentPrice;
+            const limitPrice = parseFloat(document.getElementById('limitPrice').value);
+            const priceToUse = limitPrice && limitPrice > 0 ? limitPrice : currentPrice;
+            
+            if (amount && priceToUse && priceToUse > 0) {
+                const quantity = amount / priceToUse;
                 document.getElementById('quantity').value = quantity.toFixed(8);
             } else {
                 document.getElementById('quantity').value = '';
@@ -488,8 +496,7 @@
 
         async function placeOrder() {
             const amount = parseFloat(document.getElementById('amount').value);
-            const orderType = document.getElementById('orderType').value;
-            const limitPrice = orderType === 'limit' ? parseFloat(document.getElementById('limitPrice').value) : null;
+            const limitPrice = parseFloat(document.getElementById('limitPrice').value);
             const messageDiv = document.getElementById('tradeMessage');
 
             if (!amount || amount <= 0) {
@@ -498,7 +505,7 @@
                 return;
             }
 
-            if (orderType === 'limit' && (!limitPrice || limitPrice <= 0)) {
+            if (!limitPrice || limitPrice <= 0) {
                 messageDiv.className = 'message error';
                 messageDiv.innerText = 'Please enter a valid limit price';
                 return;
@@ -525,7 +532,7 @@
                     },
                     body: JSON.stringify({
                         symbol: currentSymbol,
-                        type: orderType,
+                        type: 'limit',
                         side: tradeType,
                         amount: amount,
                         price: limitPrice,
@@ -538,9 +545,9 @@
 
                 if (response.ok) {
                     messageDiv.className = 'message success';
-                    messageDiv.innerText = `${data.message} | Executes in ${selectedTimeframe} minutes`;
+                    messageDiv.innerText = `${data.message}`;
                     document.getElementById('amount').value = '';
-                    if (limitPrice) document.getElementById('limitPrice').value = '';
+                    document.getElementById('limitPrice').value = '';
                     loadBalance();
                     loadOpenOrders();
                     loadOrderHistory();
@@ -554,13 +561,17 @@
             }
         }
 
-        function formatTimeRemaining(createdAt, minutes) {
+        function formatTimeRemaining(createdAt, minutes, status) {
+            if (status === 'pending_execution') return 'Awaiting Admin Approval';
+            if (status === 'executed') return 'Completed';
+            if (status === 'rejected') return 'Rejected';
+            
             const created = new Date(createdAt);
             const expiry = new Date(created.getTime() + (minutes * 60 * 1000));
             const now = new Date();
             const remaining = expiry - now;
             
-            if (remaining <= 0) return 'Executing...';
+            if (remaining <= 0) return 'Ready for admin';
             
             const mins = Math.floor(remaining / 60000);
             const secs = Math.floor((remaining % 60000) / 1000);
@@ -581,20 +592,32 @@
                     return;
                 }
                 
-                container.innerHTML = data.orders.map(order => `
-                    <div class="order-item">
-                        <div>
-                            <strong>${order.symbol}/USD</strong><br>
-                            <span class="${order.side === 'buy' ? 'order-type-buy' : 'order-type-sell'}">${order.side.toUpperCase()}</span>
-                            ${order.type === 'limit' ? `<br>Limit: $${order.price}` : 'Market'}
+                container.innerHTML = data.orders.map(order => {
+                    let statusDisplay = '';
+                    if (order.status === 'pending_execution') {
+                        statusDisplay = '<span class="timer">⏱️ Awaiting Admin Approval</span>';
+                    } else {
+                        statusDisplay = `<span class="timer">⏱️ ${formatTimeRemaining(order.createdAt, order.timeframe || 60, order.status)}</span>`;
+                    }
+                    
+                    return `
+                        <div class="order-item">
+                            <div>
+                                <strong>${order.symbol}/USD</strong><br>
+                                <span class="${order.side === 'buy' ? 'order-type-buy' : 'order-type-sell'}">${order.side.toUpperCase()}</span>
+                                <br>Limit: $${order.price}
+                            </div>
+                            <div>
+                                Amount: $${order.amount}<br>
+                                Quantity: ${(order.amount / order.price).toFixed(6)}
+                            </div>
+                            <div>
+                                ${statusDisplay}
+                                ${order.status === 'open' ? `<button class="cancel-btn" onclick="cancelOrder('${order.id}')">Cancel</button>` : ''}
+                            </div>
                         </div>
-                        <div>
-                            Amount: $${order.amount}<br>
-                            <span class="timer">⏱️ ${formatTimeRemaining(order.createdAt, order.timeframe || 60)}</span>
-                        </div>
-                        <button class="cancel-btn" onclick="cancelOrder('${order.id}')">Cancel</button>
-                    </div>
-                `).join('');
+                    `;
+                }).join('');
                 
                 setTimeout(() => {
                     if (data.orders.length > 0) {
@@ -625,13 +648,14 @@
                         <div>
                             <strong>${order.symbol}/USD</strong><br>
                             <span class="${order.side === 'buy' ? 'order-type-buy' : 'order-type-sell'}">${order.side.toUpperCase()}</span>
+                            <br>Limit: $${order.price}
                         </div>
                         <div>
                             Amount: $${order.amount}<br>
-                            Timeframe: ${order.timeframe || 60} min
+                            ${order.profit ? `Profit: $${order.profit.toFixed(2)}` : ''}
                         </div>
                         <div>
-                            Status: <span style="color: ${order.status === 'filled' ? '#28a745' : '#ffc107'}">${order.status}</span><br>
+                            Status: <span style="color: ${order.status === 'executed' ? '#28a745' : order.status === 'rejected' ? '#dc3545' : '#ffc107'}">${order.status}</span><br>
                             ${new Date(order.createdAt).toLocaleString()}
                         </div>
                     </div>
@@ -651,6 +675,7 @@
                 if (response.ok) {
                     loadOpenOrders();
                     loadOrderHistory();
+                    loadBalance();
                 }
             } catch (error) {
                 console.error('Error:', error);
@@ -671,11 +696,7 @@
             });
         });
 
-        document.getElementById('orderType').addEventListener('change', function() {
-            const limitInput = document.getElementById('limitPriceInput');
-            limitInput.style.display = this.value === 'limit' ? 'block' : 'none';
-        });
-
+        document.getElementById('limitPrice').addEventListener('input', updateQuantity);
         document.getElementById('amount').addEventListener('input', updateQuantity);
 
         document.querySelectorAll('.timeframe-btn').forEach(btn => {
