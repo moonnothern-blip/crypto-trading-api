@@ -28,6 +28,9 @@ let depositRequests = [];
 // Withdrawal requests storage
 let withdrawalRequests = [];
 
+// Orders storage
+let orders = [];
+
 // ============ HTML PAGES ============
 app.get('/admin-login', (req, res) => {
   res.sendFile(path.join(__dirname, 'admin-login.html'));
@@ -546,6 +549,186 @@ app.get('/api/dashboard', (req, res) => {
       withdrawLimit: user.withdrawLimit
     }
   });
+});
+
+// ============ TRADING ENDPOINTS ============
+
+// Place order
+app.post('/api/place-order', (req, res) => {
+  const { symbol, type, side, amount, price, currentPrice } = req.body;
+  const token = req.headers.authorization?.split(' ')[1];
+  
+  if (!token) {
+    return res.status(401).json({ message: 'Unauthorized' });
+  }
+  
+  const user = users.find(u => u.id === token);
+  
+  if (!user) {
+    return res.status(401).json({ message: 'Invalid token' });
+  }
+  
+  if (!amount || amount <= 0) {
+    return res.status(400).json({ message: 'Invalid amount' });
+  }
+  
+  const executePrice = type === 'market' ? currentPrice : price;
+  const totalCost = amount;
+  
+  if (side === 'buy') {
+    if (user.balance < totalCost) {
+      return res.status(400).json({ message: 'Insufficient balance' });
+    }
+    
+    // For market orders, execute immediately
+    if (type === 'market') {
+      user.balance -= totalCost;
+      const newOrder = {
+        id: Date.now().toString(),
+        userId: user.id,
+        symbol: symbol,
+        type: type,
+        side: side,
+        amount: amount,
+        price: executePrice,
+        filled: amount,
+        status: 'filled',
+        createdAt: new Date()
+      };
+      orders.push(newOrder);
+      
+      return res.json({ 
+        message: `Bought ${(amount / executePrice).toFixed(6)} ${symbol} at $${executePrice}`,
+        newBalance: user.balance
+      });
+    } else {
+      // Limit order - pending
+      const newOrder = {
+        id: Date.now().toString(),
+        userId: user.id,
+        symbol: symbol,
+        type: type,
+        side: side,
+        amount: amount,
+        price: price,
+        filled: 0,
+        status: 'open',
+        createdAt: new Date()
+      };
+      orders.push(newOrder);
+      
+      return res.json({ 
+        message: `Limit buy order placed for $${amount} at $${price}`,
+        orderId: newOrder.id
+      });
+    }
+  } else { // sell
+    // For market orders, execute immediately
+    if (type === 'market') {
+      user.balance += totalCost;
+      const newOrder = {
+        id: Date.now().toString(),
+        userId: user.id,
+        symbol: symbol,
+        type: type,
+        side: side,
+        amount: amount,
+        price: executePrice,
+        filled: amount,
+        status: 'filled',
+        createdAt: new Date()
+      };
+      orders.push(newOrder);
+      
+      return res.json({ 
+        message: `Sold ${(amount / executePrice).toFixed(6)} ${symbol} at $${executePrice}`,
+        newBalance: user.balance
+      });
+    } else {
+      const newOrder = {
+        id: Date.now().toString(),
+        userId: user.id,
+        symbol: symbol,
+        type: type,
+        side: side,
+        amount: amount,
+        price: price,
+        filled: 0,
+        status: 'open',
+        createdAt: new Date()
+      };
+      orders.push(newOrder);
+      
+      return res.json({ 
+        message: `Limit sell order placed for $${amount} at $${price}`,
+        orderId: newOrder.id
+      });
+    }
+  }
+});
+
+// Get open orders
+app.get('/api/open-orders', (req, res) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  
+  if (!token) {
+    return res.status(401).json({ message: 'Unauthorized' });
+  }
+  
+  const user = users.find(u => u.id === token);
+  
+  if (!user) {
+    return res.status(401).json({ message: 'Invalid token' });
+  }
+  
+  const userOrders = orders.filter(o => o.userId === user.id && o.status === 'open');
+  
+  res.json({ orders: userOrders });
+});
+
+// Get order history
+app.get('/api/order-history', (req, res) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  
+  if (!token) {
+    return res.status(401).json({ message: 'Unauthorized' });
+  }
+  
+  const user = users.find(u => u.id === token);
+  
+  if (!user) {
+    return res.status(401).json({ message: 'Invalid token' });
+  }
+  
+  const userOrders = orders.filter(o => o.userId === user.id).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  
+  res.json({ orders: userOrders });
+});
+
+// Cancel order
+app.delete('/api/cancel-order/:orderId', (req, res) => {
+  const { orderId } = req.params;
+  const token = req.headers.authorization?.split(' ')[1];
+  
+  if (!token) {
+    return res.status(401).json({ message: 'Unauthorized' });
+  }
+  
+  const user = users.find(u => u.id === token);
+  
+  if (!user) {
+    return res.status(401).json({ message: 'Invalid token' });
+  }
+  
+  const orderIndex = orders.findIndex(o => o.id === orderId && o.userId === user.id);
+  
+  if (orderIndex === -1) {
+    return res.status(404).json({ message: 'Order not found' });
+  }
+  
+  orders[orderIndex].status = 'cancelled';
+  
+  res.json({ message: 'Order cancelled' });
 });
 
 // Start server
