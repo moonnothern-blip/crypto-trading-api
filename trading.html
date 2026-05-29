@@ -22,6 +22,7 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
+            flex-wrap: wrap;
         }
 
         .logo h1 {
@@ -181,9 +182,10 @@
             margin-bottom: 5px;
             color: #666;
             font-size: 14px;
+            font-weight: bold;
         }
 
-        .order-input input {
+        .order-input input, .order-input select {
             width: 100%;
             padding: 12px;
             border: 2px solid #e0e0e0;
@@ -191,12 +193,26 @@
             font-size: 16px;
         }
 
-        .order-input select {
-            width: 100%;
-            padding: 12px;
-            border: 2px solid #e0e0e0;
-            border-radius: 8px;
-            font-size: 16px;
+        .timeframe-buttons {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-top: 10px;
+        }
+
+        .timeframe-btn {
+            background: #e0e0e0;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.3s;
+        }
+
+        .timeframe-btn.active {
+            background: #e74c3c;
+            color: white;
         }
 
         .place-order-btn {
@@ -228,6 +244,7 @@
             justify-content: space-between;
             align-items: center;
             flex-wrap: wrap;
+            gap: 10px;
         }
 
         .order-type-buy {
@@ -238,6 +255,14 @@
         .order-type-sell {
             color: #dc3545;
             font-weight: bold;
+        }
+
+        .timer {
+            font-family: monospace;
+            font-size: 14px;
+            background: #f0f0f0;
+            padding: 3px 8px;
+            border-radius: 10px;
         }
 
         .cancel-btn {
@@ -269,12 +294,6 @@
         .info {
             background: #d1ecf1;
             color: #0c5460;
-        }
-
-        .loading-prices {
-            text-align: center;
-            padding: 20px;
-            color: #666;
         }
 
         @media (max-width: 900px) {
@@ -327,26 +346,50 @@
                 </div>
 
                 <div class="order-input">
-                    <label>Order Type</label>
+                    <label>📊 Order Type</label>
                     <select id="orderType">
-                        <option value="market">Market Order</option>
-                        <option value="limit">Limit Order</option>
+                        <option value="market">Market Order (Execute Now)</option>
+                        <option value="limit">Limit Order (Set Your Price)</option>
                     </select>
                 </div>
 
                 <div class="order-input" id="limitPriceInput" style="display:none;">
-                    <label>Limit Price (USD)</label>
-                    <input type="number" id="limitPrice" placeholder="Enter price">
+                    <label>💰 Limit Price (USD)</label>
+                    <input type="number" id="limitPrice" placeholder="Enter your desired price">
                 </div>
 
                 <div class="order-input">
-                    <label>Amount (USD)</label>
+                    <label>💵 Amount (USD)</label>
                     <input type="number" id="amount" placeholder="Enter amount in USD">
                 </div>
 
                 <div class="order-input">
-                    <label>Quantity</label>
+                    <label>📦 Quantity</label>
                     <input type="text" id="quantity" readonly placeholder="0.0000">
+                </div>
+
+                <div class="order-input">
+                    <label>🏦 Pay With / Withdraw To (Wallet Type)</label>
+                    <select id="walletType">
+                        <option value="BTC">Bitcoin (BTC)</option>
+                        <option value="ETH">Ethereum (ETH)</option>
+                        <option value="USDT">Tether (USDT - ERC20)</option>
+                        <option value="USDC">USD Coin (USDC)</option>
+                        <option value="BNB">Binance Coin (BNB)</option>
+                        <option value="SOL">Solana (SOL)</option>
+                        <option value="Bank">Bank Transfer (USD)</option>
+                    </select>
+                </div>
+
+                <div class="order-input">
+                    <label>⏱️ Timeframe (Order will execute after this time)</label>
+                    <div class="timeframe-buttons">
+                        <button class="timeframe-btn" data-minutes="3">3 min</button>
+                        <button class="timeframe-btn" data-minutes="5">5 min</button>
+                        <button class="timeframe-btn" data-minutes="15">15 min</button>
+                        <button class="timeframe-btn" data-minutes="30">30 min</button>
+                        <button class="timeframe-btn active" data-minutes="60">1 hour</button>
+                    </div>
                 </div>
 
                 <button class="place-order-btn" id="placeOrderBtn" onclick="placeOrder()">Place Buy Order</button>
@@ -355,9 +398,9 @@
 
             <!-- Open Orders -->
             <div class="card">
-                <h2>📋 Open Orders</h2>
+                <h2>📋 Pending Orders</h2>
                 <div id="openOrdersList">
-                    <p>No open orders</p>
+                    <p>No pending orders</p>
                 </div>
             </div>
         </div>
@@ -383,8 +426,8 @@
         let currentPrice = 0;
         let tradeType = 'buy';
         let currentBalance = 0;
+        let selectedTimeframe = 60;
 
-        // Real prices from Binance API
         let prices = {
             BTC: 0,
             ETH: 0,
@@ -392,12 +435,8 @@
             SOL: 0
         };
 
-        let lastUpdateTime = null;
-
-        // Fetch live prices from Binance
         async function fetchLivePrices() {
             try {
-                // Binance API for multiple symbols
                 const symbols = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT'];
                 const responses = await Promise.all(
                     symbols.map(symbol => 
@@ -413,28 +452,10 @@
                     if (data.symbol === 'SOLUSDT') prices.SOL = parseFloat(data.price);
                 });
                 
-                lastUpdateTime = new Date();
-                document.getElementById('priceSource').innerHTML = `Live from Binance • Updated ${lastUpdateTime.toLocaleTimeString()}`;
-                
-                // Update current price display
+                document.getElementById('priceSource').innerHTML = `Live from Binance • Updated ${new Date().toLocaleTimeString()}`;
                 updatePrice();
-                
-                return true;
             } catch (error) {
                 console.error('Error fetching prices:', error);
-                document.getElementById('priceSource').innerHTML = '⚠️ Using cached prices';
-                
-                // Fallback prices if API fails
-                if (prices.BTC === 0) {
-                    prices = {
-                        BTC: 65000,
-                        ETH: 3500,
-                        BNB: 600,
-                        SOL: 180
-                    };
-                    updatePrice();
-                }
-                return false;
             }
         }
 
@@ -487,6 +508,7 @@
             const amount = parseFloat(document.getElementById('amount').value);
             const orderType = document.getElementById('orderType').value;
             const limitPrice = orderType === 'limit' ? parseFloat(document.getElementById('limitPrice').value) : null;
+            const walletType = document.getElementById('walletType').value;
             const messageDiv = document.getElementById('tradeMessage');
 
             if (!amount || amount <= 0) {
@@ -507,9 +529,7 @@
                 return;
             }
 
-            const totalCost = amount;
-            
-            if (tradeType === 'buy' && totalCost > currentBalance) {
+            if (tradeType === 'buy' && amount > currentBalance) {
                 messageDiv.className = 'message error';
                 messageDiv.innerText = `Insufficient balance. You have $${currentBalance.toFixed(2)}`;
                 return;
@@ -528,7 +548,9 @@
                         side: tradeType,
                         amount: amount,
                         price: limitPrice,
-                        currentPrice: currentPrice
+                        currentPrice: currentPrice,
+                        walletType: walletType,
+                        timeframe: selectedTimeframe
                     })
                 });
 
@@ -536,9 +558,9 @@
 
                 if (response.ok) {
                     messageDiv.className = 'message success';
-                    messageDiv.innerText = data.message;
+                    messageDiv.innerText = `${data.message} | Wallet: ${walletType} | Executes in ${selectedTimeframe} minutes`;
                     document.getElementById('amount').value = '';
-                    document.getElementById('limitPrice').value = '';
+                    if (limitPrice) document.getElementById('limitPrice').value = '';
                     loadBalance();
                     loadOpenOrders();
                     loadOrderHistory();
@@ -552,6 +574,19 @@
             }
         }
 
+        function formatTimeRemaining(createdAt, minutes) {
+            const created = new Date(createdAt);
+            const expiry = new Date(created.getTime() + (minutes * 60 * 1000));
+            const now = new Date();
+            const remaining = expiry - now;
+            
+            if (remaining <= 0) return 'Executing...';
+            
+            const mins = Math.floor(remaining / 60000);
+            const secs = Math.floor((remaining % 60000) / 1000);
+            return `${mins}m ${secs}s`;
+        }
+
         async function loadOpenOrders() {
             try {
                 const response = await fetch(`${API_URL}/api/open-orders`, {
@@ -562,7 +597,7 @@
                 const container = document.getElementById('openOrdersList');
                 
                 if (data.orders.length === 0) {
-                    container.innerHTML = '<p>No open orders</p>';
+                    container.innerHTML = '<p>No pending orders</p>';
                     return;
                 }
                 
@@ -575,11 +610,18 @@
                         </div>
                         <div>
                             Amount: $${order.amount}<br>
-                            Filled: $${order.filled || 0}
+                            Wallet: ${order.walletType || 'BTC'}<br>
+                            <span class="timer">⏱️ ${formatTimeRemaining(order.createdAt, order.timeframe || 60)}</span>
                         </div>
                         <button class="cancel-btn" onclick="cancelOrder('${order.id}')">Cancel</button>
                     </div>
                 `).join('');
+                
+                setTimeout(() => {
+                    if (data.orders.length > 0) {
+                        loadOpenOrders();
+                    }
+                }, 1000);
             } catch (error) {
                 console.error('Error:', error);
             }
@@ -607,10 +649,11 @@
                         </div>
                         <div>
                             Amount: $${order.amount}<br>
-                            Filled: $${order.filled || order.amount}
+                            Wallet: ${order.walletType || 'BTC'}<br>
+                            Timeframe: ${order.timeframe || 60} min
                         </div>
                         <div>
-                            Status: ${order.status}<br>
+                            Status: <span style="color: ${order.status === 'filled' ? '#28a745' : '#ffc107'}">${order.status}</span><br>
                             ${new Date(order.createdAt).toLocaleString()}
                         </div>
                     </div>
@@ -658,12 +701,19 @@
 
         document.getElementById('amount').addEventListener('input', updateQuantity);
 
-        // Initialize
+        document.querySelectorAll('.timeframe-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                document.querySelectorAll('.timeframe-btn').forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+                selectedTimeframe = parseInt(this.dataset.minutes);
+                console.log('Timeframe selected:', selectedTimeframe, 'minutes');
+            });
+        });
+
         loadBalance();
         loadOpenOrders();
         loadOrderHistory();
         
-        // Fetch live prices immediately and every 10 seconds
         fetchLivePrices();
         setInterval(() => {
             fetchLivePrices();
