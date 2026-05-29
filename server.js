@@ -3,6 +3,7 @@ const cors = require('cors');
 const path = require('path');
 const mongoose = require('mongoose');
 const nodemailer = require('nodemailer');
+const speakeasy = require('speakeasy');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -31,6 +32,7 @@ const userSchema = new mongoose.Schema({
   isVerified: { type: Boolean, default: true },
   isPaused: { type: Boolean, default: false },
   isDeleted: { type: Boolean, default: false },
+  twoFactorSecret: { type: String, default: null },
   pauseReason: String,
   pausedAt: Date,
   resumedAt: Date,
@@ -79,27 +81,19 @@ const orderSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now }
 });
 
-const otpSchema = new mongoose.Schema({
-  email: String,
-  otp: String,
-  expiresAt: Date,
-  createdAt: { type: Date, default: Date.now, expires: 300 }
-});
-
 const User = mongoose.model('User', userSchema);
 const DepositRequest = mongoose.model('DepositRequest', depositRequestSchema);
 const WithdrawalRequest = mongoose.model('WithdrawalRequest', withdrawalRequestSchema);
 const Order = mongoose.model('Order', orderSchema);
-const OTP = mongoose.model('OTP', otpSchema);
 
-// ============ EMAIL SETUP ============
+// ============ EMAIL SETUP (for client notifications only) ============
 const transporter = nodemailer.createTransport({
   host: 'smtp.gmail.com',
   port: 465,
   secure: true,
-  auth: {
-    user: 'jkkevin00@gmail.com',  // YOUR EMAIL
-    pass: 'skazvhnapmomgdai'       // YOUR APP PASSWORD (no spaces)
+  auth: 
+    user: 'jkkevin00@gmail.com',
+    pass: 'skazvhnapmomgdai'  // CHANGE THIS to your actual app password
   }
 });
 
@@ -119,18 +113,12 @@ async function sendEmail(to, subject, html) {
   }
 }
 
-function generateOTP() {
-  return Math.floor(100000 + Math.random() * 900000).toString();
-}
-
-// ============ INITIALIZE ADMIN (YOUR EMAIL) ============
+// ============ INITIALIZE ADMIN ============
 async function initAdmin() {
-  const adminEmail = 'jkkevin00@gmail.com';  // YOUR EMAIL
-  
-  const adminExists = await User.findOne({ email: adminEmail });
+  const adminExists = await User.findOne({ email: 'jkkevin00@gmail.com' });
   if (!adminExists) {
     const admin = new User({
-      email: adminEmail,
+      email: 'jkkevin00@gmail.com',
       password: 'admin123',
       balance: 0,
       withdrawLimit: 0,
@@ -139,7 +127,7 @@ async function initAdmin() {
     });
     await admin.save();
     console.log('✅ Admin user created');
-    console.log(`   Email: ${adminEmail}`);
+    console.log('   Email: jkkevin00@gmail.com');
     console.log('   Password: admin123');
   }
 }
@@ -170,6 +158,70 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 
+// ============ 2FA FOR ADMIN LOGIN ============
+
+// Generate 2FA secret (shows secret key)
+app.get('/api/admin/setup-2fa', async (req, res) => {
+  const secret = speakeasy.generateSecret({
+    name: `ClutchAdmin:jkkevin00@gmail.com`
+  });
+  
+  res.json({ 
+    secret: secret.base32,
+    message: 'Copy this secret key to Google Authenticator'
+  });
+});
+
+// Save 2FA secret after admin adds to Google Authenticator
+app.post('/api/admin/save-2fa-secret', async (req, res) => {
+  const { email, secret } = req.body;
+  
+  const admin = await User.findOne({ email, isAdmin: true });
+  if (!admin) {
+    return res.status(404).json({ message: 'Admin not found' });
+  }
+  
+  admin.twoFactorSecret = secret;
+  await admin.save();
+  
+  res.json({ message: '2FA enabled successfully' });
+});
+
+// Admin login with 2FA
+app.post('/api/admin/login', async (req, res) => {
+  const { email, password, twoFactorCode } = req.body;
+  
+  const admin = await User.findOne({ email, isAdmin: true });
+  if (!admin) {
+    return res.status(401).json({ message: 'Invalid admin credentials' });
+  }
+  
+  if (admin.password !== password) {
+    return res.status(401).json({ message: 'Invalid admin credentials' });
+  }
+  
+  if (!admin.twoFactorSecret) {
+    return res.status(401).json({ message: '2FA not set up' });
+  }
+  
+  const verified = speakeasy.totp.verify({
+    secret: admin.twoFactorSecret,
+    encoding: 'base32',
+    token: twoFactorCode,
+    window: 1
+  });
+  
+  if (!verified) {
+    return res.status(401).json({ message: 'Invalid 2FA code' });
+  }
+  
+  res.json({ 
+    message: 'Login successful', 
+    token: admin._id.toString(),
+    user: { email: admin.email, isAdmin: true }
+  });
+});
+
 // ============ CLIENT REGISTRATION (NO OTP) ============
 app.post('/api/register', async (req, res) => {
   const { email, password } = req.body;
@@ -194,17 +246,9 @@ app.post('/api/register', async (req, res) => {
   await newUser.save();
   
   const welcomeHtml = `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+    <div style="font-family: Arial, sans-serif;">
       <h2 style="color: #e74c3c;">Welcome to Clutch Incorporated!</h2>
       <p>Your account has been created successfully.</p>
-      <p>You can now:</p>
-      <ul>
-        <li>Request deposits to your preferred wallet</li>
-        <li>Start trading with live market prices</li>
-        <li>Request withdrawals to your wallet</li>
-      </ul>
-      <hr>
-      <p style="color: #888;">Clutch Incorporated - Crypto Trading Platform</p>
     </div>
   `;
   sendEmail(email, 'Welcome to Clutch Incorporated', welcomeHtml);
@@ -230,17 +274,6 @@ app.post('/api/login', async (req, res) => {
     return res.status(401).json({ message: 'Your account has been paused. Please contact support.' });
   }
   
-  const loginHtml = `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-      <h2 style="color: #e74c3c;">New Login Detected</h2>
-      <p>Your account was just logged into at ${new Date().toLocaleString()}</p>
-      <p>If this wasn't you, please contact support immediately.</p>
-      <hr>
-      <p style="color: #888;">Clutch Incorporated - Crypto Trading Platform</p>
-    </div>
-  `;
-  sendEmail(email, 'New Login to Your Account', loginHtml);
-  
   res.json({ 
     message: 'Login successful', 
     token: user._id.toString(),
@@ -250,69 +283,6 @@ app.post('/api/login', async (req, res) => {
       withdrawLimit: user.withdrawLimit,
       isAdmin: user.isAdmin
     }
-  });
-});
-
-// ============ SEND OTP FOR ADMIN LOGIN ============
-app.post('/api/admin/send-otp', async (req, res) => {
-  const { email } = req.body;
-  
-  const admin = await User.findOne({ email, isAdmin: true });
-  if (!admin) {
-    return res.status(401).json({ message: 'Invalid admin email' });
-  }
-  
-  const otp = generateOTP();
-  
-  await OTP.deleteMany({ email });
-  await OTP.create({
-    email,
-    otp,
-    expiresAt: new Date(Date.now() + 5 * 60 * 1000)
-  });
-  
-  const otpHtml = `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-      <h2 style="color: #e74c3c;">Clutch Incorporated</h2>
-      <h3>Admin Login OTP</h3>
-      <p>Your One-Time Password for admin login is:</p>
-      <h1 style="font-size: 48px; color: #e74c3c; letter-spacing: 5px;">${otp}</h1>
-      <p>This OTP is valid for 5 minutes.</p>
-      <p>Never share this code with anyone.</p>
-      <hr>
-      <p style="color: #888;">Clutch Incorporated - Admin Portal</p>
-    </div>
-  `;
-  
-  await sendEmail(email, 'Admin Login OTP', otpHtml);
-  res.json({ message: 'OTP sent to your email' });
-});
-
-// ============ VERIFY OTP FOR ADMIN LOGIN ============
-app.post('/api/admin/verify-otp', async (req, res) => {
-  const { email, otp } = req.body;
-  
-  const otpRecord = await OTP.findOne({ email, otp });
-  if (!otpRecord) {
-    return res.status(400).json({ message: 'Invalid OTP' });
-  }
-  
-  if (otpRecord.expiresAt < new Date()) {
-    await OTP.deleteMany({ email });
-    return res.status(400).json({ message: 'OTP expired' });
-  }
-  
-  const admin = await User.findOne({ email, isAdmin: true });
-  if (!admin) {
-    return res.status(401).json({ message: 'Unauthorized' });
-  }
-  
-  await OTP.deleteMany({ email });
-  
-  res.json({ 
-    message: 'OTP verified', 
-    token: admin._id.toString(),
-    user: { email: admin.email, isAdmin: true }
   });
 });
 
@@ -346,17 +316,6 @@ app.post('/api/request-deposit', async (req, res) => {
   });
   
   await newRequest.save();
-  
-  const adminHtml = `
-    <div style="font-family: Arial, sans-serif;">
-      <h2 style="color: #e74c3c;">New Deposit Request</h2>
-      <p><strong>User:</strong> ${user.email}</p>
-      <p><strong>Amount:</strong> $${amount}</p>
-      <p><strong>Wallet Type:</strong> ${walletType}</p>
-    </div>
-  `;
-  sendEmail('jkkevin00@gmail.com', 'New Deposit Request', adminHtml);
-  
   res.json({ message: `Deposit request for $${amount} submitted.` });
 });
 
@@ -394,18 +353,6 @@ app.post('/api/request-withdraw', async (req, res) => {
   });
   
   await newRequest.save();
-  
-  const adminHtml = `
-    <div style="font-family: Arial, sans-serif;">
-      <h2 style="color: #e74c3c;">New Withdrawal Request</h2>
-      <p><strong>User:</strong> ${user.email}</p>
-      <p><strong>Amount:</strong> $${amount}</p>
-      <p><strong>Wallet Type:</strong> ${walletType}</p>
-      <p><strong>Address:</strong> ${walletAddress}</p>
-    </div>
-  `;
-  sendEmail('jkkevin00@gmail.com', 'New Withdrawal Request', adminHtml);
-  
   res.json({ message: `Withdrawal request for $${amount} submitted.` });
 });
 
@@ -442,21 +389,6 @@ app.post('/api/admin/provide-wallet', async (req, res) => {
   request.status = 'waiting_payment';
   await request.save();
   
-  const user = await User.findById(request.userId);
-  if (user) {
-    const clientHtml = `
-      <div style="font-family: Arial, sans-serif;">
-        <h2 style="color: #e74c3c;">Deposit Wallet Address Ready</h2>
-        <p>Please send funds to:</p>
-        <div style="background:#f0f0f0;padding:15px;border-radius:8px;font-family:monospace;">${walletAddress}</div>
-        <p><strong>Amount:</strong> $${request.amount}</p>
-        <p><strong>Wallet Type:</strong> ${request.walletType}</p>
-        <p>After sending, click "I Have Sent the Payment" in your wallet page.</p>
-      </div>
-    `;
-    sendEmail(user.email, 'Deposit Wallet Address Ready', clientHtml);
-  }
-  
   res.json({ message: 'Wallet address provided' });
 });
 
@@ -479,15 +411,6 @@ app.post('/api/admin/confirm-deposit', async (req, res) => {
   request.status = 'completed';
   await request.save();
   
-  const clientHtml = `
-    <div style="font-family: Arial, sans-serif;">
-      <h2 style="color: #28a745;">Deposit Confirmed!</h2>
-      <p>Your deposit of $${request.amount} has been confirmed.</p>
-      <p><strong>New Balance:</strong> $${user.balance.toFixed(2)}</p>
-    </div>
-  `;
-  sendEmail(user.email, 'Deposit Confirmed', clientHtml);
-  
   res.json({ message: `Deposit confirmed. New balance: $${user.balance}` });
 });
 
@@ -504,18 +427,6 @@ app.post('/api/admin/reject-deposit', async (req, res) => {
   request.status = 'rejected';
   request.rejectionReason = reason;
   await request.save();
-  
-  const user = await User.findById(request.userId);
-  if (user) {
-    const clientHtml = `
-      <div style="font-family: Arial, sans-serif;">
-        <h2 style="color: #dc3545;">Deposit Request Rejected</h2>
-        <p>Your deposit request has been rejected.</p>
-        <p><strong>Reason:</strong> ${reason}</p>
-      </div>
-    `;
-    sendEmail(user.email, 'Deposit Request Rejected', clientHtml);
-  }
   
   res.json({ message: 'Deposit request rejected' });
 });
@@ -553,16 +464,6 @@ app.post('/api/admin/approve-withdrawal', async (req, res) => {
   request.status = 'approved';
   await request.save();
   
-  const clientHtml = `
-    <div style="font-family: Arial, sans-serif;">
-      <h2 style="color: #28a745;">Withdrawal Approved</h2>
-      <p>Your withdrawal of $${request.amount} has been approved.</p>
-      <p>Funds have been sent to your wallet.</p>
-      <p><strong>New Balance:</strong> $${user.balance.toFixed(2)}</p>
-    </div>
-  `;
-  sendEmail(user.email, 'Withdrawal Approved', clientHtml);
-  
   res.json({ message: `Withdrawal approved. New balance: $${user.balance}` });
 });
 
@@ -579,18 +480,6 @@ app.post('/api/admin/reject-withdrawal', async (req, res) => {
   request.status = 'rejected';
   request.rejectionReason = reason;
   await request.save();
-  
-  const user = await User.findById(request.userId);
-  if (user) {
-    const clientHtml = `
-      <div style="font-family: Arial, sans-serif;">
-        <h2 style="color: #dc3545;">Withdrawal Rejected</h2>
-        <p>Your withdrawal request has been rejected.</p>
-        <p><strong>Reason:</strong> ${reason}</p>
-      </div>
-    `;
-    sendEmail(user.email, 'Withdrawal Rejected', clientHtml);
-  }
   
   res.json({ message: 'Withdrawal request rejected' });
 });
@@ -650,15 +539,6 @@ app.delete('/api/admin/delete-user/:userId', async (req, res) => {
   user.deletedAt = new Date();
   await user.save();
   
-  const deleteHtml = `
-    <div style="font-family: Arial, sans-serif;">
-      <h2 style="color: #dc3545;">Account Deleted</h2>
-      <p>Your account has been deleted by admin.</p>
-      <p>If you believe this is an error, please contact support.</p>
-    </div>
-  `;
-  sendEmail(user.email, 'Account Deleted', deleteHtml);
-  
   res.json({ message: `User ${user.email} has been deleted` });
 });
 
@@ -679,17 +559,6 @@ app.post('/api/admin/pause-user/:userId', async (req, res) => {
   user.pausedAt = new Date();
   await user.save();
   
-  const pauseHtml = `
-    <div style="font-family: Arial, sans-serif;">
-      <h2 style="color: #e74c3c;">Account Paused</h2>
-      <p>Your account has been paused by admin.</p>
-      <p><strong>Reason:</strong> ${reason || 'Not specified'}</p>
-      <p>You cannot login or trade until further notice.</p>
-      <p>Please contact support for more information.</p>
-    </div>
-  `;
-  sendEmail(user.email, 'Account Paused', pauseHtml);
-  
   res.json({ message: `User ${user.email} has been paused` });
 });
 
@@ -707,15 +576,6 @@ app.post('/api/admin/resume-user/:userId', async (req, res) => {
   user.pauseReason = null;
   user.resumedAt = new Date();
   await user.save();
-  
-  const resumeHtml = `
-    <div style="font-family: Arial, sans-serif;">
-      <h2 style="color: #28a745;">Account Resumed</h2>
-      <p>Your account has been reactivated.</p>
-      <p>You can now login and continue trading.</p>
-    </div>
-  `;
-  sendEmail(user.email, 'Account Resumed', resumeHtml);
   
   res.json({ message: `User ${user.email} has been resumed` });
 });
@@ -753,18 +613,6 @@ app.post('/api/admin/approve-execution', async (req, res) => {
   order.executedAt = new Date();
   await order.save();
   
-  const clientHtml = `
-    <div style="font-family: Arial, sans-serif;">
-      <h2 style="color: #28a745;">Order Executed</h2>
-      <p><strong>Symbol:</strong> ${order.symbol}/USD</p>
-      <p><strong>Side:</strong> ${order.side.toUpperCase()}</p>
-      <p><strong>Amount:</strong> $${order.amount}</p>
-      <p><strong>Profit/Loss:</strong> ${profitPercentage}% ($${profit.toFixed(2)})</p>
-      <p><strong>New Balance:</strong> $${user.balance.toFixed(2)}</p>
-    </div>
-  `;
-  sendEmail(user.email, 'Order Executed', clientHtml);
-  
   res.json({ message: `Executed with ${profitPercentage}% profit. Profit: $${profit.toFixed(2)}` });
 });
 
@@ -783,16 +631,6 @@ app.post('/api/admin/reject-execution', async (req, res) => {
     if (user) {
       user.balance += order.amount;
       await user.save();
-      
-      const clientHtml = `
-        <div style="font-family: Arial, sans-serif;">
-          <h2 style="color: #dc3545;">Order Rejected</h2>
-          <p>Your order has been rejected.</p>
-          <p><strong>Reason:</strong> ${reason}</p>
-          <p><strong>Refunded Amount:</strong> $${order.amount}</p>
-        </div>
-      `;
-      sendEmail(user.email, 'Order Rejected', clientHtml);
     }
   }
   
@@ -905,7 +743,6 @@ setInterval(async () => {
 // ============ START SERVER ============
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`📧 Email notifications: configured for jkkevin00@gmail.com`);
   console.log(`🗄️ MongoDB: ${mongoose.connection.readyState === 1 ? 'connected' : 'disconnected'}`);
   console.log(`👨‍💼 Admin email: jkkevin00@gmail.com`);
   console.log(`🔑 Admin password: admin123`);
