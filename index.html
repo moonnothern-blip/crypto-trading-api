@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Rumble Incorporated - Crypto Trading</title>
+    <title>Clutch Incorporated - Crypto Trading</title>
     <style>
         * {
             margin: 0;
@@ -60,7 +60,6 @@
             border: 2px solid #e0e0e0;
             border-radius: 10px;
             font-size: 16px;
-            transition: all 0.3s;
         }
 
         input:focus {
@@ -75,10 +74,6 @@
             gap: 10px;
         }
 
-        .checkbox-group input {
-            width: auto;
-        }
-
         .legal {
             margin: 20px 0;
             font-size: 12px;
@@ -89,7 +84,6 @@
         .legal a {
             color: #e74c3c;
             text-decoration: none;
-            margin: 0 5px;
         }
 
         button {
@@ -102,7 +96,6 @@
             font-size: 16px;
             font-weight: bold;
             cursor: pointer;
-            transition: all 0.3s;
         }
 
         button:hover {
@@ -118,7 +111,6 @@
         .register-link a {
             color: #e74c3c;
             text-decoration: none;
-            font-weight: bold;
         }
 
         .message {
@@ -143,17 +135,17 @@
 <body>
     <div class="login-container">
         <div class="logo">
-            <h1>RUMBLE</h1>
+            <h1>CLUTCH</h1>
             <span>INCORPORATED</span>
         </div>
         
         <div id="loginForm">
             <h2>Sign in</h2>
             <div class="input-group">
-                <input type="email" id="email" placeholder="Email" required>
+                <input type="email" id="email" placeholder="Email">
             </div>
             <div class="input-group">
-                <input type="password" id="password" placeholder="Password" required>
+                <input type="password" id="password" placeholder="Password">
             </div>
             <div class="checkbox-group">
                 <input type="checkbox" id="rememberPassword">
@@ -175,13 +167,13 @@
         <div id="registerForm" style="display:none;">
             <h2>Create Account</h2>
             <div class="input-group">
-                <input type="email" id="regEmail" placeholder="Email" required>
+                <input type="email" id="regEmail" placeholder="Email">
             </div>
             <div class="input-group">
-                <input type="password" id="regPassword" placeholder="Password" required>
+                <input type="password" id="regPassword" placeholder="Password">
             </div>
             <div class="input-group">
-                <input type="password" id="regConfirmPassword" placeholder="Confirm Password" required>
+                <input type="password" id="regConfirmPassword" placeholder="Confirm Password">
             </div>
             <button onclick="register()">Create Account</button>
             <div class="register-link">
@@ -231,7 +223,7 @@
                 }
             } catch (error) {
                 messageDiv.className = 'message error';
-                messageDiv.innerText = 'Network error. Please try again.';
+                messageDiv.innerText = 'Network error';
             }
         }
 
@@ -281,7 +273,7 @@
                 }
             } catch (error) {
                 messageDiv.className = 'message error';
-                messageDiv.innerText = 'Network error. Please try again.';
+                messageDiv.innerText = 'Network error';
             }
         }
 

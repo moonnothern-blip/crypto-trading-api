@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin Login - Rumble Incorporated</title>
+    <title>Admin Login - Clutch Incorporated</title>
     <style>
         * {
             margin: 0;
@@ -66,7 +66,7 @@
 <body>
     <div class="login-container">
         <div class="logo">
-            <h1>RUMBLE</h1>
+            <h1>CLUTCH</h1>
             <span>ADMIN PORTAL</span>
         </div>
         <input type="text" id="adminEmail" placeholder="Admin Email">
@@ -76,15 +76,27 @@
     </div>
 
     <script>
-        function adminLogin() {
+        async function adminLogin() {
             const email = document.getElementById('adminEmail').value;
             const password = document.getElementById('adminPassword').value;
             
-            if (email === 'admin@rumble.com' && password === 'admin123') {
-                localStorage.setItem('adminToken', 'admin-secret-token');
-                window.location.href = '/admin-dashboard';
-            } else {
-                document.getElementById('errorMsg').innerText = 'Invalid admin credentials';
+            try {
+                const response = await fetch('https://crypto-trading-api-h6uc.onrender.com/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.user.isAdmin) {
+                    localStorage.setItem('adminToken', data.token);
+                    window.location.href = '/admin-dashboard';
+                } else {
+                    document.getElementById('errorMsg').innerText = 'Invalid admin credentials';
+                }
+            } catch (error) {
+                document.getElementById('errorMsg').innerText = 'Network error';
             }
         }
     </script>

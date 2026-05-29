@@ -9,8 +9,17 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static('.'));
 
-// Users storage
-let users = [];
+// Users storage with balances
+let users = [
+  {
+    id: 'admin1',
+    email: 'admin@clutch.com',
+    password: 'admin123',
+    balance: 0,
+    isAdmin: true,
+    createdAt: new Date()
+  }
+];
 
 // ============ HTML PAGES ============
 app.get('/admin-login', (req, res) => {
@@ -55,6 +64,8 @@ app.post('/api/register', (req, res) => {
     id: Date.now().toString(),
     email: email,
     password: password,
+    balance: 0,
+    isAdmin: false,
     createdAt: new Date()
   };
   
@@ -63,7 +74,7 @@ app.post('/api/register', (req, res) => {
   res.json({ 
     message: 'Registration successful', 
     token: newUser.id,
-    user: { email: email }
+    user: { email: email, balance: 0 }
   });
 });
 
@@ -80,7 +91,78 @@ app.post('/api/login', (req, res) => {
   res.json({ 
     message: 'Login successful', 
     token: user.id,
-    user: { email: user.email }
+    user: { 
+      email: user.email, 
+      balance: user.balance,
+      isAdmin: user.isAdmin || false
+    }
+  });
+});
+
+// Get user balance
+app.get('/api/balance', (req, res) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  
+  if (!token) {
+    return res.status(401).json({ message: 'Unauthorized' });
+  }
+  
+  const user = users.find(u => u.id === token);
+  
+  if (!user) {
+    return res.status(401).json({ message: 'Invalid token' });
+  }
+  
+  res.json({ balance: user.balance });
+});
+
+// Deposit (Admin only)
+app.post('/api/admin/deposit', (req, res) => {
+  const { userId, amount } = req.body;
+  const adminToken = req.headers.authorization?.split(' ')[1];
+  
+  const admin = users.find(u => u.id === adminToken && u.isAdmin === true);
+  if (!admin) {
+    return res.status(403).json({ message: 'Admin access required' });
+  }
+  
+  const user = users.find(u => u.id === userId);
+  if (!user) {
+    return res.status(404).json({ message: 'User not found' });
+  }
+  
+  user.balance += amount;
+  
+  res.json({ 
+    message: `Deposited $${amount} to ${user.email}`,
+    newBalance: user.balance
+  });
+});
+
+// Withdraw (User)
+app.post('/api/withdraw', (req, res) => {
+  const { amount } = req.body;
+  const token = req.headers.authorization?.split(' ')[1];
+  
+  if (!token) {
+    return res.status(401).json({ message: 'Unauthorized' });
+  }
+  
+  const user = users.find(u => u.id === token);
+  
+  if (!user) {
+    return res.status(401).json({ message: 'Invalid token' });
+  }
+  
+  if (user.balance < amount) {
+    return res.status(400).json({ message: 'Insufficient balance' });
+  }
+  
+  user.balance -= amount;
+  
+  res.json({ 
+    message: `Withdrawn $${amount} successfully`,
+    newBalance: user.balance
   });
 });
 
@@ -99,19 +181,33 @@ app.get('/api/dashboard', (req, res) => {
   }
   
   res.json({ 
-    message: 'Welcome',
-    user: { email: user.email }
+    user: { 
+      email: user.email, 
+      balance: user.balance 
+    }
   });
 });
 
 // Admin users list
 app.get('/api/admin/users', (req, res) => {
+  const adminToken = req.headers.authorization?.split(' ')[1];
+  
+  const admin = users.find(u => u.id === adminToken && u.isAdmin === true);
+  if (!admin) {
+    return res.status(403).json({ message: 'Admin access required' });
+  }
+  
+  const nonAdmins = users.filter(u => !u.isAdmin);
+  
   res.json({
-    users: users,
-    totalUsers: users.length,
-    activeUsers: users.length,
-    totalVolume: 0,
-    pendingKYC: 0
+    users: nonAdmins.map(u => ({
+      id: u.id,
+      email: u.email,
+      balance: u.balance,
+      createdAt: u.createdAt
+    })),
+    totalUsers: nonAdmins.length,
+    totalBalance: nonAdmins.reduce((sum, u) => sum + u.balance, 0)
   });
 });
 
