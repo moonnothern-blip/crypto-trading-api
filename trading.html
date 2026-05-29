@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clutch Incorporated - Trading</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f5f5f5;
+        }
+
+        .navbar {
+            background: #1a1a2e;
+            padding: 15px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo h1 {
+            color: white;
+            font-size: 24px;
+        }
+
+        .logo span {
+            color: #e74c3c;
+            font-size: 10px;
+        }
+
+        .nav-links a, .nav-links button {
+            color: white;
+            text-decoration: none;
+            margin-left: 25px;
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 16px;
+        }
+
+        .nav-links a:hover {
+            color: #e74c3c;
+        }
+
+        .logout-btn {
+            background: #e74c3c;
+            padding: 8px 20px;
+            border-radius: 5px;
+            color: white !important;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 30px auto;
+            padding: 0 20px;
+        }
+
+        .balance-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px 30px;
+            border-radius: 15px;
+            margin-bottom: 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .balance-amount {
+            font-size: 32px;
+            font-weight: bold;
+        }
+
+        .trading-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+        }
+
+        .card {
+            background: white;
+            padding: 25px;
+            border-radius: 15px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+
+        .card h2 {
+            margin-bottom: 20px;
+            color: #333;
+            font-size: 20px;
+        }
+
+        .symbol-selector {
+            margin-bottom: 20px;
+        }
+
+        .symbol-btn {
+            background: #f0f0f0;
+            border: none;
+            padding: 10px 20px;
+            margin: 5px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        .symbol-btn.active {
+            background: #e74c3c;
+            color: white;
+        }
+
+        .current-price {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .price-value {
+            font-size: 28px;
+            font-weight: bold;
+            color: #1a1a2e;
+        }
+
+        .price-change {
+            font-size: 14px;
+            margin-top: 5px;
+        }
+
+        .price-up {
+            color: #28a745;
+        }
+
+        .price-down {
+            color: #dc3545;
+        }
+
+        .trade-buttons {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .btn-buy {
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .btn-sell {
+            background: #dc3545;
+            color: white;
+            border: none;
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .order-input {
+            margin-bottom: 15px;
+        }
+
+        .order-input label {
+            display: block;
+            margin-bottom: 5px;
+            color: #666;
+            font-size: 14px;
+        }
+
+        .order-input input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 16px;
+        }
+
+        .order-input select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 16px;
+        }
+
+        .place-order-btn {
+            width: 100%;
+            padding: 14px;
+            background: #1a1a2e;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+
+        .open-orders {
+            margin-top: 30px;
+            background: white;
+            padding: 25px;
+            border-radius: 15px;
+        }
+
+        .order-item {
+            border: 1px solid #e0e0e0;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .order-type-buy {
+            color: #28a745;
+            font-weight: bold;
+        }
+
+        .order-type-sell {
+            color: #dc3545;
+            font-weight: bold;
+        }
+
+        .cancel-btn {
+            background: #dc3545;
+            color: white;
+            border: none;
+            padding: 5px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        .message {
+            margin-top: 15px;
+            padding: 10px;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .success {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .info {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+
+        @media (max-width: 900px) {
+            .trading-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="logo">
+            <h1>CLUTCH</h1>
+            <span>INCORPORATED</span>
+        </div>
+        <div class="nav-links">
+            <a href="/dashboard">Dashboard</a>
+            <a href="/trading">Trading</a>
+            <a href="/wallet">Wallet</a>
+            <button class="logout-btn" onclick="logout()">Logout</button>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="balance-card">
+            <div>💰 Available Balance</div>
+            <div class="balance-amount" id="balance">$0.00</div>
+        </div>
+
+        <div class="trading-grid">
+            <!-- Buy/Sell Form -->
+            <div class="card">
+                <div class="symbol-selector">
+                    <button class="symbol-btn active" data-symbol="BTC">BTC/USD</button>
+                    <button class="symbol-btn" data-symbol="ETH">ETH/USD</button>
+                    <button class="symbol-btn" data-symbol="BNB">BNB/USD</button>
+                    <button class="symbol-btn" data-symbol="SOL">SOL/USD</button>
+                </div>
+
+                <div class="current-price">
+                    <div>Current Price</div>
+                    <div class="price-value" id="currentPrice">$0.00</div>
+                    <div class="price-change" id="priceChange">0%</div>
+                </div>
+
+                <div class="trade-buttons">
+                    <button class="btn-buy" onclick="setTradeType('buy')">BUY</button>
+                    <button class="btn-sell" onclick="setTradeType('sell')">SELL</button>
+                </div>
+
+                <div class="order-input">
+                    <label>Order Type</label>
+                    <select id="orderType">
+                        <option value="market">Market Order</option>
+                        <option value="limit">Limit Order</option>
+                    </select>
+                </div>
+
+                <div class="order-input" id="limitPriceInput" style="display:none;">
+                    <label>Limit Price (USD)</label>
+                    <input type="number" id="limitPrice" placeholder="Enter price">
+                </div>
+
+                <div class="order-input">
+                    <label>Amount (USD)</label>
+                    <input type="number" id="amount" placeholder="Enter amount in USD">
+                </div>
+
+                <div class="order-input">
+                    <label>Quantity</label>
+                    <input type="text" id="quantity" readonly placeholder="0.0000">
+                </div>
+
+                <button class="place-order-btn" id="placeOrderBtn" onclick="placeOrder()">Place Buy Order</button>
+                <div id="tradeMessage" class="message"></div>
+            </div>
+
+            <!-- Open Orders -->
+            <div class="card">
+                <h2>📋 Open Orders</h2>
+                <div id="openOrdersList">
+                    <p>No open orders</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Order History -->
+        <div class="open-orders">
+            <h2>📜 Order History</h2>
+            <div id="orderHistory">
+                <p>No orders yet</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'https://crypto-trading-api-h6uc.onrender.com';
+        const token = localStorage.getItem('token');
+
+        if (!token) {
+            window.location.href = '/';
+        }
+
+        let currentSymbol = 'BTC';
+        let currentPrice = 0;
+        let tradeType = 'buy';
+        let currentBalance = 0;
+
+        // Prices data
+        const prices = {
+            BTC: 65000,
+            ETH: 3500,
+            BNB: 600,
+            SOL: 180
+        };
+
+        async function loadBalance() {
+            try {
+                const response = await fetch(`${API_URL}/api/user-info`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await response.json();
+                currentBalance = data.balance;
+                document.getElementById('balance').textContent = `$${currentBalance.toFixed(2)}`;
+            } catch (error) {
+                console.error('Error:', error);
+            }
+        }
+
+        function updatePrice() {
+            currentPrice = prices[currentSymbol];
+            document.getElementById('currentPrice').textContent = `$${currentPrice.toFixed(2)}`;
+            
+            // Random price change simulation
+            const change = (Math.random() - 0.5) * 2;
+            const changePercent = (change / currentPrice) * 100;
+            const changeElement = document.getElementById('priceChange');
+            changeElement.textContent = `${changePercent > 0 ? '+' : ''}${changePercent.toFixed(2)}%`;
+            changeElement.className = changePercent >= 0 ? 'price-change price-up' : 'price-change price-down';
+            
+            // Update quantity when amount changes
+            updateQuantity();
+        }
+
+        function updateQuantity() {
+            const amount = parseFloat(document.getElementById('amount').value);
+            if (amount && currentPrice) {
+                const quantity = amount / currentPrice;
+                document.getElementById('quantity').value = quantity.toFixed(8);
+            } else {
+                document.getElementById('quantity').value = '';
+            }
+        }
+
+        function setTradeType(type) {
+            tradeType = type;
+            const placeBtn = document.getElementById('placeOrderBtn');
+            if (type === 'buy') {
+                placeBtn.textContent = 'Place Buy Order';
+                placeBtn.style.background = '#28a745';
+            } else {
+                placeBtn.textContent = 'Place Sell Order';
+                placeBtn.style.background = '#dc3545';
+            }
+        }
+
+        async function placeOrder() {
+            const amount = parseFloat(document.getElementById('amount').value);
+            const orderType = document.getElementById('orderType').value;
+            const limitPrice = orderType === 'limit' ? parseFloat(document.getElementById('limitPrice').value) : null;
+            const messageDiv = document.getElementById('tradeMessage');
+
+            if (!amount || amount <= 0) {
+                messageDiv.className = 'message error';
+                messageDiv.innerText = 'Please enter a valid amount';
+                return;
+            }
+
+            if (orderType === 'limit' && (!limitPrice || limitPrice <= 0)) {
+                messageDiv.className = 'message error';
+                messageDiv.innerText = 'Please enter a valid limit price';
+                return;
+            }
+
+            const totalCost = orderType === 'market' ? amount : amount;
+            
+            if (tradeType === 'buy' && totalCost > currentBalance) {
+                messageDiv.className = 'message error';
+                messageDiv.innerText = `Insufficient balance. You have $${currentBalance.toFixed(2)}`;
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_URL}/api/place-order`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        symbol: currentSymbol,
+                        type: orderType,
+                        side: tradeType,
+                        amount: amount,
+                        price: limitPrice,
+                        currentPrice: currentPrice
+                    })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    messageDiv.className = 'message success';
+                    messageDiv.innerText = data.message;
+                    document.getElementById('amount').value = '';
+                    document.getElementById('limitPrice').value = '';
+                    loadBalance();
+                    loadOpenOrders();
+                    loadOrderHistory();
+                } else {
+                    messageDiv.className = 'message error';
+                    messageDiv.innerText = data.message || 'Order failed';
+                }
+            } catch (error) {
+                messageDiv.className = 'message error';
+                messageDiv.innerText = 'Network error';
+            }
+        }
+
+        async function loadOpenOrders() {
+            try {
+                const response = await fetch(`${API_URL}/api/open-orders`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await response.json();
+                
+                const container = document.getElementById('openOrdersList');
+                
+                if (data.orders.length === 0) {
+                    container.innerHTML = '<p>No open orders</p>';
+                    return;
+                }
+                
+                container.innerHTML = data.orders.map(order => `
+                    <div class="order-item">
+                        <div>
+                            <strong>${order.symbol}/USD</strong><br>
+                            <span class="${order.side === 'buy' ? 'order-type-buy' : 'order-type-sell'}">${order.side.toUpperCase()}</span>
+                            ${order.type === 'limit' ? `<br>Limit: $${order.price}` : 'Market'}
+                        </div>
+                        <div>
+                            Amount: $${order.amount}<br>
+                            Filled: $${order.filled || 0}
+                        </div>
+                        <button class="cancel-btn" onclick="cancelOrder('${order.id}')">Cancel</button>
+                    </div>
+                `).join('');
+            } catch (error) {
+                console.error('Error:', error);
+            }
+        }
+
+        async function loadOrderHistory() {
+            try {
+                const response = await fetch(`${API_URL}/api/order-history`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await response.json();
+                
+                const container = document.getElementById('orderHistory');
+                
+                if (data.orders.length === 0) {
+                    container.innerHTML = '<p>No orders yet</p>';
+                    return;
+                }
+                
+                container.innerHTML = data.orders.map(order => `
+                    <div class="order-item">
+                        <div>
+                            <strong>${order.symbol}/USD</strong><br>
+                            <span class="${order.side === 'buy' ? 'order-type-buy' : 'order-type-sell'}">${order.side.toUpperCase()}</span>
+                        </div>
+                        <div>
+                            Amount: $${order.amount}<br>
+                            Filled: $${order.filled || order.amount}
+                        </div>
+                        <div>
+                            Status: ${order.status}<br>
+                            ${new Date(order.createdAt).toLocaleString()}
+                        </div>
+                    </div>
+                `).join('');
+            } catch (error) {
+                console.error('Error:', error);
+            }
+        }
+
+        async function cancelOrder(orderId) {
+            try {
+                const response = await fetch(`${API_URL}/api/cancel-order/${orderId}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                
+                if (response.ok) {
+                    loadOpenOrders();
+                    loadOrderHistory();
+                }
+            } catch (error) {
+                console.error('Error:', error);
+            }
+        }
+
+        function logout() {
+            localStorage.removeItem('token');
+            window.location.href = '/';
+        }
+
+        // Event listeners
+        document.querySelectorAll('.symbol-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                document.querySelectorAll('.symbol-btn').forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+                currentSymbol = this.dataset.symbol;
+                updatePrice();
+            });
+        });
+
+        document.getElementById('orderType').addEventListener('change', function() {
+            const limitInput = document.getElementById('limitPriceInput');
+            limitInput.style.display = this.value === 'limit' ? 'block' : 'none';
+        });
+
+        document.getElementById('amount').addEventListener('input', updateQuantity);
+
+        // Initialize
+        loadBalance();
+        updatePrice();
+        loadOpenOrders();
+        loadOrderHistory();
+        
+        // Update price every 3 seconds
+        setInterval(() => {
+            updatePrice();
+        }, 3000);
+    </script>
+</body>
+</html>
