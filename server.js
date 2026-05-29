@@ -160,10 +160,11 @@ app.post('/api/request-deposit', (req, res) => {
     userId: user.id,
     userEmail: user.email,
     amount: amount,
+    walletType: req.body.walletType || 'Not specified',
     status: 'pending',
     adminWallet: null,
     createdAt: new Date()
-  };
+};
   
   depositRequests.push(newRequest);
   
@@ -213,9 +214,10 @@ app.post('/api/request-withdraw', (req, res) => {
     userEmail: user.email,
     amount: amount,
     walletAddress: walletAddress,
+    walletType: req.body.walletType || 'Not specified',
     status: 'pending',
     createdAt: new Date()
-  };
+};
   
   withdrawalRequests.push(newRequest);
   

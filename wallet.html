@@ -22,6 +22,7 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
+            flex-wrap: wrap;
         }
 
         .logo h1 {
@@ -44,7 +45,7 @@
             font-size: 16px;
         }
 
-        .nav-links a:hover, .nav-links button:hover {
+        .nav-links a:hover {
             color: #e74c3c;
         }
 
@@ -64,10 +65,10 @@
         .balance-card {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
-            text-align: center;
-            padding: 40px;
+            padding: 30px;
             border-radius: 15px;
             margin-bottom: 30px;
+            text-align: center;
         }
 
         .balance-amount {
@@ -90,28 +91,51 @@
 
         .card {
             background: white;
-            padding: 30px;
+            padding: 25px;
             border-radius: 15px;
             box-shadow: 0 2px 10px rgba(0,0,0,0.05);
         }
 
-        h2 {
+        .card h2 {
             margin-bottom: 20px;
             color: #333;
+            font-size: 22px;
         }
 
-        input {
+        .card h3 {
+            margin-bottom: 15px;
+            color: #555;
+            font-size: 16px;
+        }
+
+        .order-input {
+            margin-bottom: 20px;
+        }
+
+        .order-input label {
+            display: block;
+            margin-bottom: 8px;
+            color: #666;
+            font-size: 14px;
+            font-weight: bold;
+        }
+
+        .order-input input, .order-input select {
             width: 100%;
             padding: 12px;
-            margin: 10px 0;
             border: 2px solid #e0e0e0;
             border-radius: 8px;
             font-size: 16px;
         }
 
+        .order-input input:focus, .order-input select:focus {
+            outline: none;
+            border-color: #e74c3c;
+        }
+
         button {
             width: 100%;
-            padding: 12px;
+            padding: 14px;
             background: #1a1a2e;
             color: white;
             border: none;
@@ -119,7 +143,8 @@
             font-size: 16px;
             font-weight: bold;
             cursor: pointer;
-            margin-top: 15px;
+            margin-top: 10px;
+            transition: all 0.3s;
         }
 
         .request-deposit-btn {
@@ -130,11 +155,11 @@
             background: #218838;
         }
 
-        .request-withdraw-btn {
+        .withdraw-btn {
             background: #e74c3c;
         }
 
-        .request-withdraw-btn:hover {
+        .withdraw-btn:hover {
             background: #c0392b;
         }
 
@@ -143,6 +168,7 @@
             padding: 10px;
             border-radius: 8px;
             text-align: center;
+            font-size: 14px;
         }
 
         .success {
@@ -163,8 +189,14 @@
         .requests-section {
             margin-top: 30px;
             background: white;
-            padding: 20px;
+            padding: 25px;
             border-radius: 15px;
+        }
+
+        .requests-section h2 {
+            margin-bottom: 20px;
+            color: #333;
+            font-size: 20px;
         }
 
         .request-item {
@@ -205,13 +237,22 @@
             border-radius: 5px;
             font-family: monospace;
             word-break: break-all;
+            margin: 10px 0;
         }
 
         .back-link {
             display: block;
             text-align: center;
             margin-top: 20px;
+        }
+
+        .back-link a {
             color: #666;
+            text-decoration: none;
+        }
+
+        .back-link a:hover {
+            color: #e74c3c;
         }
 
         @media (max-width: 768px) {
@@ -237,28 +278,68 @@
 
     <div class="container">
         <div class="balance-card">
-            <div>Available Balance</div>
+            <div>💰 Available Balance</div>
             <div class="balance-amount" id="balance">$0.00</div>
             <div class="limit-info">Withdrawal Limit: $<span id="withdrawLimit">0</span> per transaction</div>
         </div>
 
         <div class="grid-2">
-            <!-- Request Deposit Section -->
+            <!-- Deposit Request Section -->
             <div class="card">
                 <h2>💰 Request Deposit</h2>
-                <p style="color: #666; margin-bottom: 15px;">Request to add funds. Admin will provide wallet address.</p>
-                <input type="number" id="depositAmount" placeholder="Enter amount to deposit">
+                <p style="color: #666; margin-bottom: 15px; font-size: 14px;">Request to add funds. Admin will provide wallet address.</p>
+                
+                <div class="order-input">
+                    <label>🏦 Select Wallet Type for Deposit</label>
+                    <select id="depositWalletType">
+                        <option value="Bitcoin (BTC)">Bitcoin (BTC)</option>
+                        <option value="Ethereum (ETH)">Ethereum (ETH)</option>
+                        <option value="Tether (USDT - ERC20)">Tether (USDT - ERC20)</option>
+                        <option value="USD Coin (USDC)">USD Coin (USDC)</option>
+                        <option value="Binance Coin (BNB)">Binance Coin (BNB)</option>
+                        <option value="Solana (SOL)">Solana (SOL)</option>
+                        <option value="Bank Transfer (USD)">Bank Transfer (USD)</option>
+                    </select>
+                </div>
+
+                <div class="order-input">
+                    <label>💵 Amount (USD)</label>
+                    <input type="number" id="depositAmount" placeholder="Enter amount to deposit">
+                </div>
+
                 <button class="request-deposit-btn" onclick="requestDeposit()">Request Deposit</button>
                 <div id="depositMessage" class="message"></div>
             </div>
 
-            <!-- Request Withdrawal Section -->
+            <!-- Withdrawal Request Section -->
             <div class="card">
                 <h2>💸 Request Withdrawal</h2>
-                <p style="color: #666; margin-bottom: 15px;">Request to withdraw funds. Admin will approve.</p>
-                <input type="number" id="withdrawAmount" placeholder="Enter amount to withdraw">
-                <input type="text" id="walletAddress" placeholder="Wallet Address (BTC/ETH/USDT)">
-                <button class="request-withdraw-btn" onclick="requestWithdraw()">Request Withdrawal</button>
+                <p style="color: #666; margin-bottom: 15px; font-size: 14px;">Request to withdraw funds. Admin will approve.</p>
+                
+                <div class="order-input">
+                    <label>🏦 Select Wallet Type for Withdrawal</label>
+                    <select id="withdrawWalletType">
+                        <option value="Bitcoin (BTC)">Bitcoin (BTC)</option>
+                        <option value="Ethereum (ETH)">Ethereum (ETH)</option>
+                        <option value="Tether (USDT - ERC20)">Tether (USDT - ERC20)</option>
+                        <option value="USD Coin (USDC)">USD Coin (USDC)</option>
+                        <option value="Binance Coin (BNB)">Binance Coin (BNB)</option>
+                        <option value="Solana (SOL)">Solana (SOL)</option>
+                        <option value="Bank Transfer (USD)">Bank Transfer (USD)</option>
+                    </select>
+                </div>
+
+                <div class="order-input">
+                    <label>💵 Amount (USD)</label>
+                    <input type="number" id="withdrawAmount" placeholder="Enter amount to withdraw">
+                </div>
+
+                <div class="order-input">
+                    <label>🔑 Wallet Address</label>
+                    <input type="text" id="walletAddress" placeholder="Enter your wallet address">
+                </div>
+
+                <button class="withdraw-btn" onclick="requestWithdraw()">Request Withdrawal</button>
                 <div id="withdrawMessage" class="message"></div>
             </div>
         </div>
@@ -335,12 +416,12 @@
                             statusText = 'Wallet address provided - Send payment';
                             statusClass = 'status-waiting_payment';
                             actionHtml = `
-                                <div class="wallet-address" style="margin:10px 0;">
+                                <div class="wallet-address">
                                     <strong>Send payment to:</strong><br>
                                     ${req.adminWallet}
                                 </div>
-                                <input type="text" id="txId_${req.id}" placeholder="Transaction ID / Hash" style="width:100%; padding:8px; margin:5px 0;">
-                                <button onclick="confirmPayment('${req.id}')" style="background:#28a745; margin-top:5px;">I Have Sent the Payment</button>
+                                <input type="text" id="txId_${req.id}" placeholder="Transaction ID / Hash" style="width:100%; padding:8px; margin:5px 0; border:1px solid #ddd; border-radius:5px;">
+                                <button onclick="confirmPayment('${req.id}')" style="background:#28a745; margin-top:5px; padding:8px;">I Have Sent the Payment</button>
                             `;
                             break;
                         case 'payment_sent':
@@ -361,6 +442,7 @@
                     return `
                         <div class="request-item">
                             <strong>Amount:</strong> $${req.amount}<br>
+                            <strong>Wallet Type:</strong> ${req.walletType || 'Not specified'}<br>
                             <strong>Date:</strong> ${new Date(req.createdAt).toLocaleString()}<br>
                             <strong>Status:</strong> <span class="${statusClass}">${statusText}</span>
                             ${actionHtml}
@@ -408,7 +490,8 @@
                     return `
                         <div class="request-item">
                             <strong>Amount:</strong> $${req.amount}<br>
-                            <strong>Wallet:</strong> ${req.walletAddress.substring(0, 20)}...<br>
+                            <strong>Wallet Type:</strong> ${req.walletType || 'Not specified'}<br>
+                            <strong>Wallet Address:</strong> ${req.walletAddress.substring(0, 30)}...<br>
                             <strong>Date:</strong> ${new Date(req.createdAt).toLocaleString()}<br>
                             <strong>Status:</strong> <span class="${statusClass}">${statusText}</span>
                         </div>
@@ -421,6 +504,7 @@
 
         async function requestDeposit() {
             const amount = parseFloat(document.getElementById('depositAmount').value);
+            const walletType = document.getElementById('depositWalletType').value;
             const messageDiv = document.getElementById('depositMessage');
 
             if (!amount || amount <= 0) {
@@ -436,14 +520,14 @@
                         'Content-Type': 'application/json',
                         'Authorization': `Bearer ${token}`
                     },
-                    body: JSON.stringify({ amount })
+                    body: JSON.stringify({ amount, walletType })
                 });
 
                 const data = await response.json();
 
                 if (response.ok) {
                     messageDiv.className = 'message success';
-                    messageDiv.innerText = data.message;
+                    messageDiv.innerText = `${data.message} Wallet: ${walletType}`;
                     document.getElementById('depositAmount').value = '';
                     loadDepositRequests();
                 } else {
@@ -458,6 +542,7 @@
 
         async function requestWithdraw() {
             const amount = parseFloat(document.getElementById('withdrawAmount').value);
+            const walletType = document.getElementById('withdrawWalletType').value;
             const walletAddress = document.getElementById('walletAddress').value;
             const messageDiv = document.getElementById('withdrawMessage');
 
@@ -480,14 +565,14 @@
                         'Content-Type': 'application/json',
                         'Authorization': `Bearer ${token}`
                     },
-                    body: JSON.stringify({ amount, walletAddress })
+                    body: JSON.stringify({ amount, walletAddress, walletType })
                 });
 
                 const data = await response.json();
 
                 if (response.ok) {
                     messageDiv.className = 'message success';
-                    messageDiv.innerText = data.message;
+                    messageDiv.innerText = `${data.message} Wallet: ${walletType}`;
                     document.getElementById('withdrawAmount').value = '';
                     document.getElementById('walletAddress').value = '';
                     loadWithdrawalRequests();
@@ -504,8 +589,7 @@
 
         async function confirmPayment(requestId) {
             const transactionId = document.getElementById(`txId_${requestId}`).value;
-            const messageDiv = document.getElementById('depositMessage');
-
+            
             if (!transactionId) {
                 alert('Please enter the transaction ID or hash');
                 return;
