@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const mongoose = require('mongoose');
 const nodemailer = require('nodemailer');
 
 const app = express();
@@ -10,51 +11,122 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static('.'));
 
-// Users storage
-let users = [
-  {
-    id: 'admin1',
-    email: 'admin@clutch.com',
-    password: 'admin123',
-    balance: 0,
-    withdrawLimit: 0,
-    isAdmin: true,
-    isVerified: true,
-    twoFactorSecret: null,
-    createdAt: new Date()
+// ============ MONGODB CONNECTION ============
+// Replace with your MongoDB connection string
+const MONGODB_URI = 'mongodb+srv://moonnothern_db_user:Attention@cluster0.m94xnok.mongodb.net/crypto_trading?retryWrites=true&w=majority';
+
+mongoose.connect(MONGODB_URI, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+}).then(() => {
+  console.log('✅ MongoDB connected permanently');
+}).catch(err => {
+  console.error('❌ MongoDB connection error:', err);
+});
+
+// ============ MONGOOSE SCHEMAS ============
+
+// User Schema
+const userSchema = new mongoose.Schema({
+  email: { type: String, required: true, unique: true },
+  password: { type: String, required: true },
+  balance: { type: Number, default: 0 },
+  withdrawLimit: { type: Number, default: 1000 },
+  isAdmin: { type: Boolean, default: false },
+  isVerified: { type: Boolean, default: true },
+  twoFactorSecret: { type: String, default: null },
+  createdAt: { type: Date, default: Date.now },
+  deletedAt: { type: Date, default: null },
+  isDeleted: { type: Boolean, default: false }
+});
+
+// Deposit Request Schema
+const depositRequestSchema = new mongoose.Schema({
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  userEmail: String,
+  amount: Number,
+  walletType: String,
+  status: String,
+  adminWallet: String,
+  transactionId: String,
+  rejectionReason: String,
+  createdAt: { type: Date, default: Date.now }
+});
+
+// Withdrawal Request Schema
+const withdrawalRequestSchema = new mongoose.Schema({
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  userEmail: String,
+  amount: Number,
+  walletAddress: String,
+  walletType: String,
+  status: String,
+  rejectionReason: String,
+  createdAt: { type: Date, default: Date.now }
+});
+
+// Order Schema
+const orderSchema = new mongoose.Schema({
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  userEmail: String,
+  symbol: String,
+  type: String,
+  side: String,
+  amount: Number,
+  price: Number,
+  filled: Number,
+  status: String,
+  timeframe: Number,
+  profit: Number,
+  profitPercentage: Number,
+  rejectionReason: String,
+  createdAt: { type: Date, default: Date.now }
+});
+
+// OTP Schema (temporary)
+const otpSchema = new mongoose.Schema({
+  email: String,
+  otp: String,
+  expiresAt: Date,
+  createdAt: { type: Date, default: Date.now, expires: 300 }
+});
+
+// Create Models
+const User = mongoose.model('User', userSchema);
+const DepositRequest = mongoose.model('DepositRequest', depositRequestSchema);
+const WithdrawalRequest = mongoose.model('WithdrawalRequest', withdrawalRequestSchema);
+const Order = mongoose.model('Order', orderSchema);
+const OTP = mongoose.model('OTP', otpSchema);
+
+// ============ INITIALIZE ADMIN (if not exists) ============
+async function initAdmin() {
+  const adminExists = await User.findOne({ email: 'admin@clutch.com' });
+  if (!adminExists) {
+    const admin = new User({
+      email: 'admin@clutch.com',
+      password: 'admin123',
+      balance: 0,
+      withdrawLimit: 0,
+      isAdmin: true,
+      isVerified: true
+    });
+    await admin.save();
+    console.log('✅ Admin user created');
   }
-];
+}
+initAdmin();
 
-// OTP storage for registration
-let otpStorage = {};
-
-// Deposit requests storage
-let depositRequests = [];
-
-// Withdrawal requests storage
-let withdrawalRequests = [];
-
-// Orders storage
-let orders = [];
-
-// Email configuration - UPDATE THESE WITH YOUR EMAIL
+// ============ EMAIL CONFIGURATION ============
 const transporter = nodemailer.createTransport({
   host: 'smtp.gmail.com',
   port: 465,
   secure: true,
   auth: {
-    user: 'jeframw2@gmail.com', // CHANGE THIS
-    pass: 'zvkhabcuignsishf
-' // CHANGE THIS
+    user: 'moonnothern@gmail.com', // CHANGE THIS
+    pass: 'avjcqttllpnvrxqe' // CHANGE THIS - NO SPACES!
   }
 });
 
-// Generate OTP
-function generateOTP() {
-  return Math.floor(100000 + Math.random() * 900000).toString();
-}
-
-// Send email function
 async function sendEmail(to, subject, html) {
   try {
     await transporter.sendMail({
@@ -68,6 +140,11 @@ async function sendEmail(to, subject, html) {
     console.error('Email error:', error);
     return false;
   }
+}
+
+// Generate OTP
+function generateOTP() {
+  return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
 // ============ HTML PAGES ============
@@ -96,177 +173,112 @@ app.get('/', (req, res) => {
 });
 
 // ============ API ENDPOINTS ============
-app.get('/health', (req, res) => {
-  res.json({ status: 'healthy' });
-});
 
-// Send OTP for registration
+// Send OTP
 app.post('/api/send-otp', async (req, res) => {
   const { email } = req.body;
   
-  const existingUser = users.find(u => u.email === email);
+  const existingUser = await User.findOne({ email, isDeleted: false });
   if (existingUser) {
     return res.status(400).json({ message: 'Email already registered' });
   }
   
   const otp = generateOTP();
-  otpStorage[email] = { otp, expiresAt: Date.now() + 5 * 60 * 1000 };
+  
+  await OTP.deleteMany({ email });
+  await OTP.create({
+    email,
+    otp,
+    expiresAt: new Date(Date.now() + 5 * 60 * 1000)
+  });
   
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
       <h2 style="color: #e74c3c;">Clutch Incorporated</h2>
       <h3>Email Verification</h3>
       <p>Your OTP for registration is:</p>
-      <h1 style="font-size: 48px; color: #e74c3c; letter-spacing: 5px;">${otp}</h1>
-      <p>This OTP is valid for 5 minutes.</p>
+      <h1 style="font-size: 48px; color: #e74c3c;">${otp}</h1>
+      <p>Valid for 5 minutes.</p>
       <hr>
-      <p style="color: #888; font-size: 12px;">Clutch Incorporated - Crypto Trading Platform</p>
+      <p style="color: #888;">Clutch Incorporated - Crypto Trading Platform</p>
     </div>
   `;
   
-  const sent = await sendEmail(email, 'Verify Your Email - Clutch Incorporated', html);
-  
-  if (sent) {
-    res.json({ message: 'OTP sent to your email' });
-  } else {
-    res.status(500).json({ message: 'Failed to send email. Please check email configuration.' });
-  }
+  await sendEmail(email, 'Verify Your Email', html);
+  res.json({ message: 'OTP sent to your email' });
 });
 
-// Verify OTP and complete registration
-app.post('/api/verify-otp', (req, res) => {
+// Verify OTP and Register
+app.post('/api/verify-otp', async (req, res) => {
   const { email, otp, password } = req.body;
   
-  const storedOTP = otpStorage[email];
-  
-  if (!storedOTP) {
-    return res.status(400).json({ message: 'No OTP requested. Please request OTP first.' });
-  }
-  
-  if (Date.now() > storedOTP.expiresAt) {
-    delete otpStorage[email];
-    return res.status(400).json({ message: 'OTP expired. Please request a new one.' });
-  }
-  
-  if (storedOTP.otp !== otp) {
+  const otpRecord = await OTP.findOne({ email, otp });
+  if (!otpRecord) {
     return res.status(400).json({ message: 'Invalid OTP' });
   }
   
-  const newUser = {
-    id: Date.now().toString(),
-    email: email,
-    password: password,
+  if (otpRecord.expiresAt < new Date()) {
+    return res.status(400).json({ message: 'OTP expired' });
+  }
+  
+  const newUser = new User({
+    email,
+    password,
     balance: 0,
     withdrawLimit: 1000,
-    isAdmin: false,
-    isVerified: true,
-    twoFactorSecret: null,
-    createdAt: new Date()
-  };
+    isAdmin: false
+  });
   
-  users.push(newUser);
-  delete otpStorage[email];
+  await newUser.save();
+  await OTP.deleteMany({ email });
   
-  const welcomeHtml = `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-      <h2 style="color: #e74c3c;">Welcome to Clutch Incorporated!</h2>
-      <p>Your account has been successfully verified and created.</p>
-      <p>You can now start trading with live market prices.</p>
-      <hr>
-      <p style="color: #888; font-size: 12px;">Clutch Incorporated - Crypto Trading Platform</p>
-    </div>
-  `;
-  sendEmail(email, 'Welcome to Clutch Incorporated', welcomeHtml);
+  const welcomeHtml = `<h2>Welcome to Clutch Incorporated!</h2><p>Your account has been created.</p>`;
+  sendEmail(email, 'Welcome to Clutch', welcomeHtml);
   
   res.json({ 
     message: 'Registration successful', 
-    token: newUser.id,
-    user: { 
-      email: email, 
-      balance: 0,
-      withdrawLimit: 1000
-    }
+    token: newUser._id.toString(),
+    user: { email, balance: 0, withdrawLimit: 1000 }
   });
 });
 
 // Login
-app.post('/api/login', (req, res) => {
+app.post('/api/login', async (req, res) => {
   const { email, password } = req.body;
   
-  const user = users.find(u => u.email === email && u.password === password);
+  const user = await User.findOne({ email, password, isDeleted: false });
   
   if (!user) {
     return res.status(401).json({ message: 'Invalid credentials' });
   }
   
-  const loginHtml = `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-      <h2 style="color: #e74c3c;">New Login Detected</h2>
-      <p>Your account was just logged into at ${new Date().toLocaleString()}</p>
-      <p>If this wasn't you, please contact support immediately.</p>
-      <hr>
-      <p style="color: #888; font-size: 12px;">Clutch Incorporated - Crypto Trading Platform</p>
-    </div>
-  `;
-  sendEmail(email, 'New Login to Your Account', loginHtml);
+  sendEmail(email, 'New Login Detected', `<p>Your account was logged into at ${new Date().toLocaleString()}</p>`);
   
   res.json({ 
     message: 'Login successful', 
-    token: user.id,
+    token: user._id.toString(),
     user: { 
       email: user.email, 
       balance: user.balance,
       withdrawLimit: user.withdrawLimit,
-      isAdmin: user.isAdmin || false
+      isAdmin: user.isAdmin
     }
   });
 });
 
-// Enable 2FA for user
-app.post('/api/enable-2fa', (req, res) => {
-  const token = req.headers.authorization?.split(' ')[1];
-  const { secret } = req.body;
-  
-  const user = users.find(u => u.id === token);
-  if (!user) {
-    return res.status(401).json({ message: 'Unauthorized' });
-  }
-  
-  user.twoFactorSecret = secret;
-  
-  const html = `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-      <h2 style="color: #e74c3c;">2FA Enabled</h2>
-      <p>Two-Factor Authentication has been enabled on your account.</p>
-      <p>If you didn't do this, please contact support immediately.</p>
-      <hr>
-      <p style="color: #888; font-size: 12px;">Clutch Incorporated - Crypto Trading Platform</p>
-    </div>
-  `;
-  sendEmail(user.email, '2FA Enabled on Your Account', html);
-  
-  res.json({ message: '2FA enabled successfully' });
-});
-
 // Get user info
-app.get('/api/user-info', (req, res) => {
+app.get('/api/user-info', async (req, res) => {
   const token = req.headers.authorization?.split(' ')[1];
   
-  if (!token) {
-    return res.status(401).json({ message: 'Unauthorized' });
-  }
-  
-  const user = users.find(u => u.id === token);
-  
+  const user = await User.findById(token);
   if (!user) {
-    return res.status(401).json({ message: 'Invalid token' });
+    return res.status(401).json({ message: 'Unauthorized' });
   }
   
   res.json({ 
     balance: user.balance,
     withdrawLimit: user.withdrawLimit,
-    email: user.email,
-    has2FA: !!user.twoFactorSecret
+    email: user.email
   });
 });
 
@@ -275,51 +287,32 @@ app.post('/api/request-deposit', async (req, res) => {
   const { amount, walletType } = req.body;
   const token = req.headers.authorization?.split(' ')[1];
   
-  if (!token) {
+  const user = await User.findById(token);
+  if (!user) {
     return res.status(401).json({ message: 'Unauthorized' });
   }
   
-  const user = users.find(u => u.id === token);
-  
-  if (!user) {
-    return res.status(401).json({ message: 'Invalid token' });
-  }
-  
-  if (!amount || amount <= 0) {
-    return res.status(400).json({ message: 'Invalid amount' });
-  }
-  
-  const newRequest = {
-    id: Date.now().toString(),
-    userId: user.id,
+  const newRequest = new DepositRequest({
+    userId: user._id,
     userEmail: user.email,
-    amount: amount,
-    walletType: walletType || 'Not specified',
-    status: 'pending',
-    adminWallet: null,
-    createdAt: new Date()
-  };
-  
-  depositRequests.push(newRequest);
-  
-  const adminHtml = `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-      <h2 style="color: #e74c3c;">New Deposit Request</h2>
-      <p><strong>User:</strong> ${user.email}</p>
-      <p><strong>Amount:</strong> $${amount}</p>
-      <p><strong>Wallet Type:</strong> ${walletType}</p>
-      <p><strong>Time:</strong> ${new Date().toLocaleString()}</p>
-      <hr>
-      <p style="color: #888; font-size: 12px;">Clutch Incorporated - Admin Notification</p>
-    </div>
-  `;
-  sendEmail('admin@clutch.com', 'New Deposit Request', adminHtml);
-  
-  res.json({ 
-    message: `Deposit request for $${amount} submitted. Wallet: ${walletType}`,
-    requestId: newRequest.id,
+    amount,
+    walletType,
     status: 'pending'
   });
+  
+  await newRequest.save();
+  
+  res.json({ message: `Deposit request for $${amount} submitted.`, requestId: newRequest._id });
+});
+
+// Get user's deposit requests
+app.get('/api/my-deposit-requests', async (req, res) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  const user = await User.findById(token);
+  if (!user) return res.status(401).json({ message: 'Unauthorized' });
+  
+  const requests = await DepositRequest.find({ userId: user._id }).sort({ createdAt: -1 });
+  res.json({ requests });
 });
 
 // ============ WITHDRAWAL REQUEST ============
@@ -327,770 +320,409 @@ app.post('/api/request-withdraw', async (req, res) => {
   const { amount, walletAddress, walletType } = req.body;
   const token = req.headers.authorization?.split(' ')[1];
   
-  if (!token) {
+  const user = await User.findById(token);
+  if (!user) {
     return res.status(401).json({ message: 'Unauthorized' });
   }
   
-  const user = users.find(u => u.id === token);
-  
-  if (!user) {
-    return res.status(401).json({ message: 'Invalid token' });
-  }
-  
-  if (!amount || amount <= 0) {
-    return res.status(400).json({ message: 'Invalid amount' });
-  }
-  
   if (amount > user.withdrawLimit) {
-    return res.status(400).json({ 
-      message: `Withdrawal limit exceeded. Your limit is $${user.withdrawLimit}` 
-    });
+    return res.status(400).json({ message: `Limit is $${user.withdrawLimit}` });
   }
   
   if (user.balance < amount) {
     return res.status(400).json({ message: 'Insufficient balance' });
   }
   
-  if (!walletAddress) {
-    return res.status(400).json({ message: 'Wallet address required' });
-  }
-  
-  const newRequest = {
-    id: Date.now().toString(),
-    userId: user.id,
+  const newRequest = new WithdrawalRequest({
+    userId: user._id,
     userEmail: user.email,
-    amount: amount,
-    walletAddress: walletAddress,
-    walletType: walletType || 'Not specified',
-    status: 'pending',
-    createdAt: new Date()
-  };
-  
-  withdrawalRequests.push(newRequest);
-  
-  const adminHtml = `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-      <h2 style="color: #e74c3c;">New Withdrawal Request</h2>
-      <p><strong>User:</strong> ${user.email}</p>
-      <p><strong>Amount:</strong> $${amount}</p>
-      <p><strong>Wallet Type:</strong> ${walletType}</p>
-      <p><strong>Wallet Address:</strong> ${walletAddress}</p>
-      <p><strong>Time:</strong> ${new Date().toLocaleString()}</p>
-      <hr>
-      <p style="color: #888; font-size: 12px;">Clutch Incorporated - Admin Notification</p>
-    </div>
-  `;
-  sendEmail('admin@clutch.com', 'New Withdrawal Request', adminHtml);
-  
-  res.json({ 
-    message: `Withdrawal request for $${amount} submitted. Wallet: ${walletType}`,
-    requestId: newRequest.id,
+    amount,
+    walletAddress,
+    walletType,
     status: 'pending'
   });
+  
+  await newRequest.save();
+  
+  res.json({ message: `Withdrawal request for $${amount} submitted.` });
 });
 
-// ============ ADMIN: Get all withdrawal requests ============
-app.get('/api/admin/withdrawal-requests', (req, res) => {
-  const adminToken = req.headers.authorization?.split(' ')[1];
-  
-  const admin = users.find(u => u.id === adminToken && u.isAdmin === true);
-  if (!admin) {
-    return res.status(403).json({ message: 'Admin access required' });
-  }
-  
-  res.json({ requests: withdrawalRequests });
-});
-
-// ============ ADMIN: Approve withdrawal ============
-app.post('/api/admin/approve-withdrawal', async (req, res) => {
-  const { requestId } = req.body;
-  const adminToken = req.headers.authorization?.split(' ')[1];
-  
-  const admin = users.find(u => u.id === adminToken && u.isAdmin === true);
-  if (!admin) {
-    return res.status(403).json({ message: 'Admin access required' });
-  }
-  
-  const request = withdrawalRequests.find(r => r.id === requestId);
-  if (!request) {
-    return res.status(404).json({ message: 'Request not found' });
-  }
-  
-  if (request.status !== 'pending') {
-    return res.status(400).json({ message: 'Request already processed' });
-  }
-  
-  const user = users.find(u => u.id === request.userId);
-  if (!user) {
-    return res.status(404).json({ message: 'User not found' });
-  }
-  
-  if (user.balance < request.amount) {
-    return res.status(400).json({ message: 'Insufficient balance now' });
-  }
-  
-  user.balance -= request.amount;
-  
-  request.status = 'approved';
-  request.approvedAt = new Date();
-  request.approvedBy = admin.id;
-  
-  const clientHtml = `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-      <h2 style="color: #e74c3c;">Withdrawal Approved</h2>
-      <p>Your withdrawal request has been approved!</p>
-      <p><strong>Amount:</strong> $${request.amount}</p>
-      <p><strong>Wallet:</strong> ${request.walletType}</p>
-      <p><strong>Address:</strong> ${request.walletAddress.substring(0, 20)}...</p>
-      <hr>
-      <p style="color: #888; font-size: 12px;">Clutch Incorporated - Crypto Trading Platform</p>
-    </div>
-  `;
-  sendEmail(user.email, 'Withdrawal Approved', clientHtml);
-  
-  res.json({ 
-    message: `Withdrawal of $${request.amount} approved. Wallet: ${request.walletType}`,
-    newBalance: user.balance
-  });
-});
-
-// ============ ADMIN: Reject withdrawal ============
-app.post('/api/admin/reject-withdrawal', async (req, res) => {
-  const { requestId, reason } = req.body;
-  const adminToken = req.headers.authorization?.split(' ')[1];
-  
-  const admin = users.find(u => u.id === adminToken && u.isAdmin === true);
-  if (!admin) {
-    return res.status(403).json({ message: 'Admin access required' });
-  }
-  
-  const request = withdrawalRequests.find(r => r.id === requestId);
-  if (!request) {
-    return res.status(404).json({ message: 'Request not found' });
-  }
-  
-  request.status = 'rejected';
-  request.rejectionReason = reason;
-  request.rejectedAt = new Date();
-  
-  const user = users.find(u => u.id === request.userId);
-  if (user) {
-    const clientHtml = `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <h2 style="color: #e74c3c;">Withdrawal Rejected</h2>
-        <p>Your withdrawal request has been rejected.</p>
-        <p><strong>Amount:</strong> $${request.amount}</p>
-        <p><strong>Reason:</strong> ${reason}</p>
-        <hr>
-        <p style="color: #888; font-size: 12px;">Clutch Incorporated - Crypto Trading Platform</p>
-      </div>
-    `;
-    sendEmail(user.email, 'Withdrawal Rejected', clientHtml);
-  }
-  
-  res.json({ message: `Withdrawal request rejected` });
-});
-
-// ============ CLIENT: Get withdrawal requests ============
-app.get('/api/my-withdrawal-requests', (req, res) => {
+// Get user's withdrawal requests
+app.get('/api/my-withdrawal-requests', async (req, res) => {
   const token = req.headers.authorization?.split(' ')[1];
+  const user = await User.findById(token);
+  if (!user) return res.status(401).json({ message: 'Unauthorized' });
   
-  if (!token) {
-    return res.status(401).json({ message: 'Unauthorized' });
-  }
-  
-  const user = users.find(u => u.id === token);
-  
-  if (!user) {
-    return res.status(401).json({ message: 'Invalid token' });
-  }
-  
-  const userRequests = withdrawalRequests.filter(r => r.userId === user.id);
-  
-  res.json({ requests: userRequests });
+  const requests = await WithdrawalRequest.find({ userId: user._id }).sort({ createdAt: -1 });
+  res.json({ requests });
 });
 
-// ============ ADMIN: Provide wallet address for deposit ============
+// ============ ADMIN: Get all deposit requests ============
+app.get('/api/admin/deposit-requests', async (req, res) => {
+  const adminToken = req.headers.authorization?.split(' ')[1];
+  const admin = await User.findById(adminToken);
+  if (!admin?.isAdmin) return res.status(403).json({ message: 'Admin access required' });
+  
+  const requests = await DepositRequest.find().sort({ createdAt: -1 });
+  res.json({ requests });
+});
+
+// ============ ADMIN: Provide wallet address ============
 app.post('/api/admin/provide-wallet', async (req, res) => {
   const { requestId, walletAddress } = req.body;
   const adminToken = req.headers.authorization?.split(' ')[1];
+  const admin = await User.findById(adminToken);
+  if (!admin?.isAdmin) return res.status(403).json({ message: 'Admin access required' });
   
-  const admin = users.find(u => u.id === adminToken && u.isAdmin === true);
-  if (!admin) {
-    return res.status(403).json({ message: 'Admin access required' });
-  }
-  
-  const request = depositRequests.find(r => r.id === requestId);
-  if (!request) {
-    return res.status(404).json({ message: 'Request not found' });
-  }
-  
-  if (request.status !== 'pending') {
-    return res.status(400).json({ message: 'Request already processed' });
-  }
+  const request = await DepositRequest.findById(requestId);
+  if (!request) return res.status(404).json({ message: 'Request not found' });
   
   request.adminWallet = walletAddress;
   request.status = 'waiting_payment';
+  await request.save();
   
-  const user = users.find(u => u.id === request.userId);
-  if (user) {
-    const clientHtml = `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <h2 style="color: #e74c3c;">Deposit Wallet Address Provided</h2>
-        <p>Please send funds to:</p>
-        <div style="background: #f0f0f0; padding: 15px; border-radius: 8px; font-family: monospace; word-break: break-all;">
-          ${walletAddress}
-        </div>
-        <p><strong>Amount:</strong> $${request.amount}</p>
-        <p><strong>Wallet Type:</strong> ${request.walletType}</p>
-        <hr>
-        <p style="color: #888; font-size: 12px;">Clutch Incorporated - Crypto Trading Platform</p>
-      </div>
-    `;
-    sendEmail(user.email, 'Deposit Wallet Address Ready', clientHtml);
-  }
-  
-  res.json({ 
-    message: `Wallet address provided for ${request.walletType}`,
-    request: request
-  });
-});
-
-// ============ CLIENT: Get deposit requests ============
-app.get('/api/my-deposit-requests', (req, res) => {
-  const token = req.headers.authorization?.split(' ')[1];
-  
-  if (!token) {
-    return res.status(401).json({ message: 'Unauthorized' });
-  }
-  
-  const user = users.find(u => u.id === token);
-  
-  if (!user) {
-    return res.status(401).json({ message: 'Invalid token' });
-  }
-  
-  const userRequests = depositRequests.filter(r => r.userId === user.id);
-  
-  res.json({ requests: userRequests });
-});
-
-// ============ CLIENT: Confirm payment sent ============
-app.post('/api/confirm-payment', async (req, res) => {
-  const { requestId, transactionId } = req.body;
-  const token = req.headers.authorization?.split(' ')[1];
-  
-  if (!token) {
-    return res.status(401).json({ message: 'Unauthorized' });
-  }
-  
-  const user = users.find(u => u.id === token);
-  
-  if (!user) {
-    return res.status(401).json({ message: 'Invalid token' });
-  }
-  
-  const request = depositRequests.find(r => r.id === requestId);
-  if (!request) {
-    return res.status(404).json({ message: 'Request not found' });
-  }
-  
-  if (request.userId !== user.id) {
-    return res.status(403).json({ message: 'Unauthorized' });
-  }
-  
-  if (request.status !== 'waiting_payment') {
-    return res.status(400).json({ message: 'Invalid request status' });
-  }
-  
-  request.status = 'payment_sent';
-  request.transactionId = transactionId;
-  request.paymentSentAt = new Date();
-  
-  const adminHtml = `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-      <h2 style="color: #e74c3c;">Payment Confirmation Received</h2>
-      <p><strong>User:</strong> ${user.email}</p>
-      <p><strong>Amount:</strong> $${request.amount}</p>
-      <p><strong>Wallet Type:</strong> ${request.walletType}</p>
-      <p><strong>Transaction ID:</strong> ${transactionId}</p>
-      <hr>
-      <p style="color: #888; font-size: 12px;">Clutch Incorporated - Admin Notification</p>
-    </div>
-  `;
-  sendEmail('admin@clutch.com', 'Payment Confirmation Received', adminHtml);
-  
-  res.json({ message: `Payment confirmation submitted.` });
+  res.json({ message: 'Wallet address provided' });
 });
 
 // ============ ADMIN: Confirm deposit ============
 app.post('/api/admin/confirm-deposit', async (req, res) => {
   const { requestId } = req.body;
   const adminToken = req.headers.authorization?.split(' ')[1];
+  const admin = await User.findById(adminToken);
+  if (!admin?.isAdmin) return res.status(403).json({ message: 'Admin access required' });
   
-  const admin = users.find(u => u.id === adminToken && u.isAdmin === true);
-  if (!admin) {
-    return res.status(403).json({ message: 'Admin access required' });
-  }
+  const request = await DepositRequest.findById(requestId);
+  if (!request) return res.status(404).json({ message: 'Request not found' });
   
-  const request = depositRequests.find(r => r.id === requestId);
-  if (!request) {
-    return res.status(404).json({ message: 'Request not found' });
-  }
-  
-  if (request.status !== 'payment_sent') {
-    return res.status(400).json({ message: 'Payment not confirmed by client yet' });
-  }
-  
-  const user = users.find(u => u.id === request.userId);
-  if (!user) {
-    return res.status(404).json({ message: 'User not found' });
-  }
+  const user = await User.findById(request.userId);
+  if (!user) return res.status(404).json({ message: 'User not found' });
   
   user.balance += request.amount;
+  await user.save();
   
   request.status = 'completed';
-  request.completedAt = new Date();
+  await request.save();
   
-  const clientHtml = `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-      <h2 style="color: #e74c3c;">Deposit Confirmed!</h2>
-      <p>Your deposit of $${request.amount} has been confirmed and added to your account.</p>
-      <p><strong>New Balance:</strong> $${user.balance.toFixed(2)}</p>
-      <hr>
-      <p style="color: #888; font-size: 12px;">Clutch Incorporated - Crypto Trading Platform</p>
-    </div>
-  `;
-  sendEmail(user.email, 'Deposit Confirmed', clientHtml);
-  
-  res.json({ 
-    message: `Deposit of $${request.amount} confirmed. Wallet: ${request.walletType}`,
-    newBalance: user.balance
-  });
+  res.json({ message: `Deposit confirmed. New balance: $${user.balance}` });
 });
 
 // ============ ADMIN: Reject deposit ============
 app.post('/api/admin/reject-deposit', async (req, res) => {
   const { requestId, reason } = req.body;
   const adminToken = req.headers.authorization?.split(' ')[1];
+  const admin = await User.findById(adminToken);
+  if (!admin?.isAdmin) return res.status(403).json({ message: 'Admin access required' });
   
-  const admin = users.find(u => u.id === adminToken && u.isAdmin === true);
-  if (!admin) {
-    return res.status(403).json({ message: 'Admin access required' });
-  }
-  
-  const request = depositRequests.find(r => r.id === requestId);
-  if (!request) {
-    return res.status(404).json({ message: 'Request not found' });
-  }
+  const request = await DepositRequest.findById(requestId);
+  if (!request) return res.status(404).json({ message: 'Request not found' });
   
   request.status = 'rejected';
   request.rejectionReason = reason;
+  await request.save();
   
-  const user = users.find(u => u.id === request.userId);
-  if (user) {
-    const clientHtml = `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <h2 style="color: #e74c3c;">Deposit Request Rejected</h2>
-        <p>Your deposit request has been rejected.</p>
-        <p><strong>Amount:</strong> $${request.amount}</p>
-        <p><strong>Reason:</strong> ${reason}</p>
-        <hr>
-        <p style="color: #888; font-size: 12px;">Clutch Incorporated - Crypto Trading Platform</p>
-      </div>
-    `;
-    sendEmail(user.email, 'Deposit Request Rejected', clientHtml);
-  }
-  
-  res.json({ message: `Deposit request rejected` });
+  res.json({ message: 'Deposit request rejected' });
 });
 
-// ============ ADMIN: Get all deposit requests ============
-app.get('/api/admin/deposit-requests', (req, res) => {
+// ============ ADMIN: Get all withdrawal requests ============
+app.get('/api/admin/withdrawal-requests', async (req, res) => {
   const adminToken = req.headers.authorization?.split(' ')[1];
+  const admin = await User.findById(adminToken);
+  if (!admin?.isAdmin) return res.status(403).json({ message: 'Admin access required' });
   
-  const admin = users.find(u => u.id === adminToken && u.isAdmin === true);
-  if (!admin) {
-    return res.status(403).json({ message: 'Admin access required' });
-  }
-  
-  res.json({ requests: depositRequests });
+  const requests = await WithdrawalRequest.find().sort({ createdAt: -1 });
+  res.json({ requests });
 });
 
-// ============ ADMIN: Get pending executions ============
-app.get('/api/admin/pending-executions', (req, res) => {
+// ============ ADMIN: Approve withdrawal ============
+app.post('/api/admin/approve-withdrawal', async (req, res) => {
+  const { requestId } = req.body;
   const adminToken = req.headers.authorization?.split(' ')[1];
+  const admin = await User.findById(adminToken);
+  if (!admin?.isAdmin) return res.status(403).json({ message: 'Admin access required' });
   
-  const admin = users.find(u => u.id === adminToken && u.isAdmin === true);
-  if (!admin) {
-    return res.status(403).json({ message: 'Admin access required' });
+  const request = await WithdrawalRequest.findById(requestId);
+  if (!request) return res.status(404).json({ message: 'Request not found' });
+  
+  const user = await User.findById(request.userId);
+  if (!user) return res.status(404).json({ message: 'User not found' });
+  
+  if (user.balance < request.amount) {
+    return res.status(400).json({ message: 'Insufficient balance' });
   }
   
-  const pendingOrders = orders.filter(o => o.status === 'pending_execution');
+  user.balance -= request.amount;
+  await user.save();
   
-  res.json({ orders: pendingOrders });
+  request.status = 'approved';
+  await request.save();
+  
+  res.json({ message: `Withdrawal approved. New balance: $${user.balance}` });
 });
 
-// ============ ADMIN: Approve order execution ============
-app.post('/api/admin/approve-execution', async (req, res) => {
-  const { orderId, profitPercentage } = req.body;
+// ============ ADMIN: Reject withdrawal ============
+app.post('/api/admin/reject-withdrawal', async (req, res) => {
+  const { requestId, reason } = req.body;
   const adminToken = req.headers.authorization?.split(' ')[1];
+  const admin = await User.findById(adminToken);
+  if (!admin?.isAdmin) return res.status(403).json({ message: 'Admin access required' });
   
-  const admin = users.find(u => u.id === adminToken && u.isAdmin === true);
-  if (!admin) {
-    return res.status(403).json({ message: 'Admin access required' });
-  }
+  const request = await WithdrawalRequest.findById(requestId);
+  if (!request) return res.status(404).json({ message: 'Request not found' });
   
-  const order = orders.find(o => o.id === orderId);
-  if (!order) {
-    return res.status(404).json({ message: 'Order not found' });
-  }
+  request.status = 'rejected';
+  request.rejectionReason = reason;
+  await request.save();
   
-  if (order.status !== 'pending_execution') {
-    return res.status(400).json({ message: 'Order not ready for execution' });
-  }
-  
-  const user = users.find(u => u.id === order.userId);
-  if (!user) {
-    return res.status(404).json({ message: 'User not found' });
-  }
-  
-  let profit = 0;
-  
-  if (profitPercentage) {
-    profit = (order.amount * parseFloat(profitPercentage)) / 100;
-  }
-  
-  if (order.side === 'buy') {
-    user.balance += profit;
-  } else {
-    user.balance += profit;
-  }
-  
-  order.status = 'executed';
-  order.executedAt = new Date();
-  order.profit = profit;
-  order.profitPercentage = profitPercentage || 0;
-  order.executedBy = admin.id;
-  
-  const clientHtml = `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-      <h2 style="color: #e74c3c;">Order Executed</h2>
-      <p>Your order has been executed!</p>
-      <p><strong>Symbol:</strong> ${order.symbol}/USD</p>
-      <p><strong>Side:</strong> ${order.side.toUpperCase()}</p>
-      <p><strong>Amount:</strong> $${order.amount}</p>
-      <p><strong>Price:</strong> $${order.price}</p>
-      <p><strong>Profit/Loss:</strong> ${profitPercentage}% ($${profit.toFixed(2)})</p>
-      <p><strong>New Balance:</strong> $${user.balance.toFixed(2)}</p>
-      <hr>
-      <p style="color: #888; font-size: 12px;">Clutch Incorporated - Crypto Trading Platform</p>
-    </div>
-  `;
-  sendEmail(user.email, 'Order Executed', clientHtml);
-  
-  res.json({ 
-    message: `Order executed with ${profitPercentage}% profit/loss. Profit: $${profit.toFixed(2)}`,
-    newBalance: user.balance,
-    profit: profit
-  });
-});
-
-// ============ ADMIN: Reject order execution ============
-app.post('/api/admin/reject-execution', async (req, res) => {
-  const { orderId, reason } = req.body;
-  const adminToken = req.headers.authorization?.split(' ')[1];
-  
-  const admin = users.find(u => u.id === adminToken && u.isAdmin === true);
-  if (!admin) {
-    return res.status(403).json({ message: 'Admin access required' });
-  }
-  
-  const order = orders.find(o => o.id === orderId);
-  if (!order) {
-    return res.status(404).json({ message: 'Order not found' });
-  }
-  
-  if (order.status !== 'pending_execution') {
-    return res.status(400).json({ message: 'Order not ready for execution' });
-  }
-  
-  order.status = 'rejected';
-  order.rejectionReason = reason;
-  order.rejectedAt = new Date();
-  
-  if (order.side === 'buy') {
-    const user = users.find(u => u.id === order.userId);
-    if (user) {
-      user.balance += order.amount;
-      
-      const clientHtml = `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <h2 style="color: #e74c3c;">Order Rejected</h2>
-          <p>Your order has been rejected.</p>
-          <p><strong>Symbol:</strong> ${order.symbol}/USD</p>
-          <p><strong>Amount:</strong> $${order.amount}</p>
-          <p><strong>Reason:</strong> ${reason}</p>
-          <p><strong>Refunded Amount:</strong> $${order.amount}</p>
-          <hr>
-          <p style="color: #888; font-size: 12px;">Clutch Incorporated - Crypto Trading Platform</p>
-        </div>
-      `;
-      sendEmail(user.email, 'Order Rejected - Refund Issued', clientHtml);
-    }
-  }
-  
-  res.json({ message: 'Order execution rejected and refunded' });
+  res.json({ message: 'Withdrawal request rejected' });
 });
 
 // ============ ADMIN: Get all users ============
-app.get('/api/admin/users', (req, res) => {
+app.get('/api/admin/users', async (req, res) => {
   const adminToken = req.headers.authorization?.split(' ')[1];
+  const admin = await User.findById(adminToken);
+  if (!admin?.isAdmin) return res.status(403).json({ message: 'Admin access required' });
   
-  const admin = users.find(u => u.id === adminToken && u.isAdmin === true);
-  if (!admin) {
-    return res.status(403).json({ message: 'Admin access required' });
-  }
-  
-  const nonAdmins = users.filter(u => !u.isAdmin);
+  const users = await User.find({ isAdmin: false, isDeleted: false }).sort({ createdAt: -1 });
   
   res.json({
-    users: nonAdmins.map(u => ({
-      id: u.id,
+    users: users.map(u => ({
+      id: u._id,
       email: u.email,
       balance: u.balance,
       withdrawLimit: u.withdrawLimit,
-      has2FA: !!u.twoFactorSecret,
       createdAt: u.createdAt
     })),
-    totalUsers: nonAdmins.length,
-    totalBalance: nonAdmins.reduce((sum, u) => sum + u.balance, 0)
+    totalUsers: users.length,
+    totalBalance: users.reduce((sum, u) => sum + u.balance, 0)
   });
 });
 
-// ============ ADMIN: Update withdrawal limit ============
-app.post('/api/admin/update-limit', (req, res) => {
-  const { userId, newLimit } = req.body;
+// ============ ADMIN: Delete user (Soft delete - keeps data but marks deleted) ============
+app.delete('/api/admin/delete-user/:userId', async (req, res) => {
+  const { userId } = req.params;
   const adminToken = req.headers.authorization?.split(' ')[1];
+  const admin = await User.findById(adminToken);
   
-  const admin = users.find(u => u.id === adminToken && u.isAdmin === true);
-  if (!admin) {
+  if (!admin?.isAdmin) {
     return res.status(403).json({ message: 'Admin access required' });
   }
   
-  const user = users.find(u => u.id === userId);
-  if (!user) {
+  const userToDelete = await User.findById(userId);
+  if (!userToDelete) {
     return res.status(404).json({ message: 'User not found' });
   }
   
-  if (!newLimit || newLimit < 0) {
-    return res.status(400).json({ message: 'Invalid limit amount' });
+  if (userToDelete.isAdmin) {
+    return res.status(400).json({ message: 'Cannot delete admin users' });
   }
+  
+  // Soft delete - mark as deleted but keep data
+  userToDelete.isDeleted = true;
+  userToDelete.deletedAt = new Date();
+  await userToDelete.save();
+  
+  // Also mark all their requests as deleted (optional)
+  await DepositRequest.updateMany({ userId: userId }, { status: 'deleted' });
+  await WithdrawalRequest.updateMany({ userId: userId }, { status: 'deleted' });
+  await Order.updateMany({ userId: userId }, { status: 'deleted' });
+  
+  // Send email notification
+  const deleteHtml = `
+    <div style="font-family: Arial, sans-serif;">
+      <h2 style="color: #e74c3c;">Account Deleted</h2>
+      <p>Your account has been deleted by admin.</p>
+      <p>If you believe this is an error, please contact support.</p>
+    </div>
+  `;
+  sendEmail(userToDelete.email, 'Account Deleted', deleteHtml);
+  
+  res.json({ message: `User ${userToDelete.email} has been deleted` });
+});
+
+// ============ ADMIN: Update withdrawal limit ============
+app.post('/api/admin/update-limit', async (req, res) => {
+  const { userId, newLimit } = req.body;
+  const adminToken = req.headers.authorization?.split(' ')[1];
+  const admin = await User.findById(adminToken);
+  
+  if (!admin?.isAdmin) return res.status(403).json({ message: 'Admin access required' });
+  
+  const user = await User.findById(userId);
+  if (!user) return res.status(404).json({ message: 'User not found' });
   
   user.withdrawLimit = newLimit;
+  await user.save();
   
-  res.json({ 
-    message: `Withdrawal limit updated to $${newLimit}`,
-    newLimit: user.withdrawLimit
-  });
+  res.json({ message: `Withdrawal limit updated to $${newLimit}` });
 });
 
-// Dashboard data
-app.get('/api/dashboard', (req, res) => {
+// ============ PLACE ORDER ============
+app.post('/api/place-order', async (req, res) => {
+  const { symbol, type, side, amount, price, timeframe } = req.body;
   const token = req.headers.authorization?.split(' ')[1];
   
-  if (!token) {
-    return res.status(401).json({ message: 'Unauthorized' });
-  }
-  
-  const user = users.find(u => u.id === token);
-  
-  if (!user) {
-    return res.status(401).json({ message: 'Invalid token' });
-  }
-  
-  res.json({ 
-    user: { 
-      email: user.email, 
-      balance: user.balance,
-      withdrawLimit: user.withdrawLimit,
-      has2FA: !!user.twoFactorSecret
-    }
-  });
-});
-
-// ============ TRADING ENDPOINTS ============
-
-app.post('/api/place-order', (req, res) => {
-  const { symbol, type, side, amount, price, currentPrice, timeframe } = req.body;
-  const token = req.headers.authorization?.split(' ')[1];
-  
-  if (!token) {
-    return res.status(401).json({ message: 'Unauthorized' });
-  }
-  
-  const user = users.find(u => u.id === token);
-  
-  if (!user) {
-    return res.status(401).json({ message: 'Invalid token' });
-  }
-  
-  if (!amount || amount <= 0) {
-    return res.status(400).json({ message: 'Invalid amount' });
-  }
+  const user = await User.findById(token);
+  if (!user) return res.status(401).json({ message: 'Unauthorized' });
   
   if (side === 'buy') {
     if (user.balance < amount) {
       return res.status(400).json({ message: 'Insufficient balance' });
     }
-    
     user.balance -= amount;
-    const newOrder = {
-      id: Date.now().toString(),
-      userId: user.id,
-      userEmail: user.email,
-      symbol: symbol,
-      type: type,
-      side: side,
-      amount: amount,
-      price: price,
-      filled: 0,
-      status: 'open',
-      timeframe: timeframe || 60,
-      createdAt: new Date()
-    };
-    orders.push(newOrder);
-    
-    return res.json({ 
-      message: `Limit ${side} order placed for $${amount} at $${price}. Will execute in ${timeframe} minutes.`,
-      orderId: newOrder.id
-    });
-  } else {
-    const newOrder = {
-      id: Date.now().toString(),
-      userId: user.id,
-      userEmail: user.email,
-      symbol: symbol,
-      type: type,
-      side: side,
-      amount: amount,
-      price: price,
-      filled: 0,
-      status: 'open',
-      timeframe: timeframe || 60,
-      createdAt: new Date()
-    };
-    orders.push(newOrder);
-    
-    return res.json({ 
-      message: `Limit ${side} order placed for $${amount} at $${price}. Will execute in ${timeframe} minutes.`,
-      orderId: newOrder.id
-    });
+    await user.save();
   }
+  
+  const newOrder = new Order({
+    userId: user._id,
+    userEmail: user.email,
+    symbol,
+    type,
+    side,
+    amount,
+    price,
+    filled: 0,
+    status: 'open',
+    timeframe: timeframe || 60
+  });
+  
+  await newOrder.save();
+  
+  res.json({ message: `Order placed for $${amount} at $${price}. Executes in ${timeframe} min.`, orderId: newOrder._id });
 });
 
 // Get open orders
-app.get('/api/open-orders', (req, res) => {
+app.get('/api/open-orders', async (req, res) => {
   const token = req.headers.authorization?.split(' ')[1];
+  const user = await User.findById(token);
+  if (!user) return res.status(401).json({ message: 'Unauthorized' });
   
-  if (!token) {
-    return res.status(401).json({ message: 'Unauthorized' });
-  }
-  
-  const user = users.find(u => u.id === token);
-  
-  if (!user) {
-    return res.status(401).json({ message: 'Invalid token' });
-  }
-  
-  const userOrders = orders.filter(o => o.userId === user.id && (o.status === 'open' || o.status === 'pending_execution'));
-  
-  res.json({ orders: userOrders });
+  const orders = await Order.find({ userId: user._id, status: { $in: ['open', 'pending_execution'] } }).sort({ createdAt: -1 });
+  res.json({ orders });
 });
 
 // Get order history
-app.get('/api/order-history', (req, res) => {
+app.get('/api/order-history', async (req, res) => {
   const token = req.headers.authorization?.split(' ')[1];
+  const user = await User.findById(token);
+  if (!user) return res.status(401).json({ message: 'Unauthorized' });
   
-  if (!token) {
-    return res.status(401).json({ message: 'Unauthorized' });
-  }
-  
-  const user = users.find(u => u.id === token);
-  
-  if (!user) {
-    return res.status(401).json({ message: 'Invalid token' });
-  }
-  
-  const userOrders = orders.filter(o => o.userId === user.id && o.status !== 'open').sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-  
-  res.json({ orders: userOrders });
+  const orders = await Order.find({ userId: user._id, status: { $nin: ['open', 'pending_execution'] } }).sort({ createdAt: -1 });
+  res.json({ orders });
 });
 
 // Cancel order
-app.delete('/api/cancel-order/:orderId', (req, res) => {
+app.delete('/api/cancel-order/:orderId', async (req, res) => {
   const { orderId } = req.params;
   const token = req.headers.authorization?.split(' ')[1];
   
-  if (!token) {
-    return res.status(401).json({ message: 'Unauthorized' });
-  }
+  const user = await User.findById(token);
+  if (!user) return res.status(401).json({ message: 'Unauthorized' });
   
-  const user = users.find(u => u.id === token);
-  
-  if (!user) {
-    return res.status(401).json({ message: 'Invalid token' });
-  }
-  
-  const orderIndex = orders.findIndex(o => o.id === orderId && o.userId === user.id);
-  
-  if (orderIndex === -1) {
-    return res.status(404).json({ message: 'Order not found' });
-  }
-  
-  const order = orders[orderIndex];
+  const order = await Order.findOne({ _id: orderId, userId: user._id });
+  if (!order) return res.status(404).json({ message: 'Order not found' });
   
   if (order.status === 'open') {
     if (order.side === 'buy') {
       user.balance += order.amount;
+      await user.save();
     }
     order.status = 'cancelled';
+    await order.save();
+    res.json({ message: 'Order cancelled', newBalance: user.balance });
   } else {
-    return res.status(400).json({ message: 'Order cannot be cancelled' });
+    res.status(400).json({ message: 'Order cannot be cancelled' });
   }
-  
-  res.json({ message: 'Order cancelled', newBalance: user.balance });
 });
 
-// ============ ALL ORDERS (Admin view) ============
-app.get('/api/admin/all-orders', (req, res) => {
+// ============ ADMIN: Get pending executions ============
+app.get('/api/admin/pending-executions', async (req, res) => {
   const adminToken = req.headers.authorization?.split(' ')[1];
+  const admin = await User.findById(adminToken);
+  if (!admin?.isAdmin) return res.status(403).json({ message: 'Admin access required' });
   
-  const admin = users.find(u => u.id === adminToken && u.isAdmin === true);
-  if (!admin) {
-    return res.status(403).json({ message: 'Admin access required' });
-  }
-  
-  const allOrders = orders.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-  
-  res.json({ orders: allOrders });
+  const orders = await Order.find({ status: 'pending_execution' }).sort({ createdAt: -1 });
+  res.json({ orders });
 });
 
-// Check for expired timeframes (run every 30 seconds)
-setInterval(() => {
-  const now = new Date();
-  orders.forEach(order => {
-    if (order.status === 'open' && order.timeframe) {
-      const createdTime = new Date(order.createdAt);
-      const expiryTime = new Date(createdTime.getTime() + (order.timeframe * 60 * 1000));
-      
-      if (now >= expiryTime) {
-        order.status = 'pending_execution';
-        console.log(`Order ${order.id} ready for admin execution`);
-      }
+// ============ ADMIN: Approve execution ============
+app.post('/api/admin/approve-execution', async (req, res) => {
+  const { orderId, profitPercentage } = req.body;
+  const adminToken = req.headers.authorization?.split(' ')[1];
+  const admin = await User.findById(adminToken);
+  if (!admin?.isAdmin) return res.status(403).json({ message: 'Admin access required' });
+  
+  const order = await Order.findById(orderId);
+  if (!order) return res.status(404).json({ message: 'Order not found' });
+  
+  const user = await User.findById(order.userId);
+  if (!user) return res.status(404).json({ message: 'User not found' });
+  
+  const profit = (order.amount * parseFloat(profitPercentage)) / 100;
+  user.balance += profit;
+  await user.save();
+  
+  order.status = 'executed';
+  order.profit = profit;
+  order.profitPercentage = profitPercentage;
+  order.executedAt = new Date();
+  await order.save();
+  
+  res.json({ message: `Order executed with ${profitPercentage}% profit. Profit: $${profit.toFixed(2)}` });
+});
+
+// ============ ADMIN: Reject execution ============
+app.post('/api/admin/reject-execution', async (req, res) => {
+  const { orderId, reason } = req.body;
+  const adminToken = req.headers.authorization?.split(' ')[1];
+  const admin = await User.findById(adminToken);
+  if (!admin?.isAdmin) return res.status(403).json({ message: 'Admin access required' });
+  
+  const order = await Order.findById(orderId);
+  if (!order) return res.status(404).json({ message: 'Order not found' });
+  
+  if (order.side === 'buy') {
+    const user = await User.findById(order.userId);
+    if (user) {
+      user.balance += order.amount;
+      await user.save();
     }
-  });
+  }
+  
+  order.status = 'rejected';
+  order.rejectionReason = reason;
+  await order.save();
+  
+  res.json({ message: 'Order rejected and refunded' });
+});
+
+// Check expired timeframes
+setInterval(async () => {
+  const now = new Date();
+  const orders = await Order.find({ status: 'open', timeframe: { $exists: true } });
+  
+  for (const order of orders) {
+    const expiryTime = new Date(order.createdAt.getTime() + (order.timeframe * 60 * 1000));
+    if (now >= expiryTime) {
+      order.status = 'pending_execution';
+      await order.save();
+      console.log(`Order ${order._id} ready for execution`);
+    }
+  }
 }, 30000);
+
+// ============ Dashboard data ============
+app.get('/api/dashboard', async (req, res) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  const user = await User.findById(token);
+  if (!user) return res.status(401).json({ message: 'Unauthorized' });
+  
+  res.json({ user: { email: user.email, balance: user.balance, withdrawLimit: user.withdrawLimit } });
+});
+
+// Health check
+app.get('/health', (req, res) => {
+  res.json({ status: 'healthy', database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected' });
+});
 
 // Start server
 app.listen(PORT, '0.0.0.0', () => {
