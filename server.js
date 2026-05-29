@@ -9,29 +9,48 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static('.'));
 
-// Temporary storage (in memory - will reset on restart)
-// Later we'll add real database
+// Users storage
 let users = [];
 
+// ============ HTML PAGES ============
+app.get('/admin', (req, res) => {
+  res.sendFile(path.join(__dirname, 'admin.html'));
+});
+
+app.get('/dashboard', (req, res) => {
+  res.sendFile(path.join(__dirname, 'dashboard.html'));
+});
+
+app.get('/trading', (req, res) => {
+  res.sendFile(path.join(__dirname, 'trading.html'));
+});
+
+app.get('/wallet', (req, res) => {
+  res.sendFile(path.join(__dirname, 'wallet.html'));
+});
+
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'index.html'));
+});
+
+// ============ API ENDPOINTS ============
 app.get('/health', (req, res) => {
   res.json({ status: 'healthy' });
 });
 
-// Register endpoint
+// Register
 app.post('/api/register', (req, res) => {
   const { email, password } = req.body;
   
-  // Check if user exists
   const existingUser = users.find(u => u.email === email);
   if (existingUser) {
     return res.status(400).json({ message: 'Email already registered' });
   }
   
-  // Create new user
   const newUser = {
     id: Date.now().toString(),
     email: email,
-    password: password, // In real app, hash this!
+    password: password,
     createdAt: new Date()
   };
   
@@ -44,11 +63,10 @@ app.post('/api/register', (req, res) => {
   });
 });
 
-// Login endpoint
+// Login
 app.post('/api/login', (req, res) => {
   const { email, password } = req.body;
   
-  // Find user
   const user = users.find(u => u.email === email && u.password === password);
   
   if (!user) {
@@ -62,7 +80,7 @@ app.post('/api/login', (req, res) => {
   });
 });
 
-// Protected dashboard endpoint
+// Dashboard data
 app.get('/api/dashboard', (req, res) => {
   const token = req.headers.authorization?.split(' ')[1];
   
@@ -77,23 +95,29 @@ app.get('/api/dashboard', (req, res) => {
   }
   
   res.json({ 
-    message: 'Welcome to dashboard',
+    message: 'Welcome',
     user: { email: user.email }
   });
 });
 
-app.get('/admin', (req, res) => {
-  res.sendFile(path.join(__dirname, 'admin.html'));
+// Admin users list
+app.get('/api/admin/users', (req, res) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  
+  if (!token) {
+    return res.status(401).json({ message: 'Unauthorized' });
+  }
+  
+  res.json({
+    users: users,
+    totalUsers: users.length,
+    activeUsers: users.length,
+    totalVolume: 0,
+    pendingKYC: 0
+  });
 });
 
-app.get('/dashboard', (req, res) => {
-  res.sendFile(path.join(__dirname, 'dashboard.html'));
-});
-
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'index.html'));
-});
-
+// Start server
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on port ${PORT}`);
   console.log(`Users registered: ${users.length}`);
