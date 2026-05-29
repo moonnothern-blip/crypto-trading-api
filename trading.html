@@ -291,11 +291,6 @@
             color: #721c24;
         }
 
-        .info {
-            background: #d1ecf1;
-            color: #0c5460;
-        }
-
         @media (max-width: 900px) {
             .trading-grid {
                 grid-template-columns: 1fr;
@@ -366,19 +361,6 @@
                 <div class="order-input">
                     <label>📦 Quantity</label>
                     <input type="text" id="quantity" readonly placeholder="0.0000">
-                </div>
-
-                <div class="order-input">
-                    <label>🏦 Pay With / Withdraw To (Wallet Type)</label>
-                    <select id="walletType">
-                        <option value="BTC">Bitcoin (BTC)</option>
-                        <option value="ETH">Ethereum (ETH)</option>
-                        <option value="USDT">Tether (USDT - ERC20)</option>
-                        <option value="USDC">USD Coin (USDC)</option>
-                        <option value="BNB">Binance Coin (BNB)</option>
-                        <option value="SOL">Solana (SOL)</option>
-                        <option value="Bank">Bank Transfer (USD)</option>
-                    </select>
                 </div>
 
                 <div class="order-input">
@@ -508,7 +490,6 @@
             const amount = parseFloat(document.getElementById('amount').value);
             const orderType = document.getElementById('orderType').value;
             const limitPrice = orderType === 'limit' ? parseFloat(document.getElementById('limitPrice').value) : null;
-            const walletType = document.getElementById('walletType').value;
             const messageDiv = document.getElementById('tradeMessage');
 
             if (!amount || amount <= 0) {
@@ -549,7 +530,6 @@
                         amount: amount,
                         price: limitPrice,
                         currentPrice: currentPrice,
-                        walletType: walletType,
                         timeframe: selectedTimeframe
                     })
                 });
@@ -558,7 +538,7 @@
 
                 if (response.ok) {
                     messageDiv.className = 'message success';
-                    messageDiv.innerText = `${data.message} | Wallet: ${walletType} | Executes in ${selectedTimeframe} minutes`;
+                    messageDiv.innerText = `${data.message} | Executes in ${selectedTimeframe} minutes`;
                     document.getElementById('amount').value = '';
                     if (limitPrice) document.getElementById('limitPrice').value = '';
                     loadBalance();
@@ -610,7 +590,6 @@
                         </div>
                         <div>
                             Amount: $${order.amount}<br>
-                            Wallet: ${order.walletType || 'BTC'}<br>
                             <span class="timer">⏱️ ${formatTimeRemaining(order.createdAt, order.timeframe || 60)}</span>
                         </div>
                         <button class="cancel-btn" onclick="cancelOrder('${order.id}')">Cancel</button>
@@ -649,7 +628,6 @@
                         </div>
                         <div>
                             Amount: $${order.amount}<br>
-                            Wallet: ${order.walletType || 'BTC'}<br>
                             Timeframe: ${order.timeframe || 60} min
                         </div>
                         <div>
@@ -684,7 +662,6 @@
             window.location.href = '/';
         }
 
-        // Event listeners
         document.querySelectorAll('.symbol-btn').forEach(btn => {
             btn.addEventListener('click', function() {
                 document.querySelectorAll('.symbol-btn').forEach(b => b.classList.remove('active'));
@@ -706,7 +683,6 @@
                 document.querySelectorAll('.timeframe-btn').forEach(b => b.classList.remove('active'));
                 this.classList.add('active');
                 selectedTimeframe = parseInt(this.dataset.minutes);
-                console.log('Timeframe selected:', selectedTimeframe, 'minutes');
             });
         });
 
