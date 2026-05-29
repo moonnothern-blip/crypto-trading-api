@@ -10,7 +10,6 @@
             padding: 0;
             box-sizing: border-box;
         }
-
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
@@ -19,7 +18,6 @@
             align-items: center;
             justify-content: center;
         }
-
         .login-container {
             background: rgba(255, 255, 255, 0.95);
             padding: 40px;
@@ -27,33 +25,27 @@
             width: 450px;
             box-shadow: 0 20px 60px rgba(0,0,0,0.3);
         }
-
         .logo {
             text-align: center;
             margin-bottom: 30px;
         }
-
         .logo h1 {
             font-size: 32px;
             color: #1a1a2e;
         }
-
         .logo span {
             color: #e74c3c;
             font-size: 14px;
             letter-spacing: 2px;
         }
-
         h2 {
             text-align: center;
             margin-bottom: 30px;
             color: #333;
         }
-
         .input-group {
             margin-bottom: 20px;
         }
-
         input {
             width: 100%;
             padding: 15px;
@@ -61,31 +53,30 @@
             border-radius: 10px;
             font-size: 16px;
         }
-
         input:focus {
             outline: none;
             border-color: #e74c3c;
         }
-
         .checkbox-group {
             margin: 15px 0;
             display: flex;
             align-items: center;
             gap: 10px;
         }
-
+        .checkbox-group input {
+            width: auto;
+        }
         .legal {
             margin: 20px 0;
             font-size: 12px;
             color: #666;
             text-align: center;
         }
-
         .legal a {
             color: #e74c3c;
             text-decoration: none;
+            margin: 0 5px;
         }
-
         button {
             width: 100%;
             padding: 15px;
@@ -97,22 +88,19 @@
             font-weight: bold;
             cursor: pointer;
         }
-
         button:hover {
             background: #c0392b;
         }
-
         .register-link {
             text-align: center;
             margin-top: 20px;
             color: #666;
         }
-
         .register-link a {
             color: #e74c3c;
             text-decoration: none;
+            font-weight: bold;
         }
-
         .message {
             margin-top: 15px;
             padding: 10px;
@@ -120,15 +108,31 @@
             text-align: center;
             font-size: 14px;
         }
-
         .message.success {
             background: #d4edda;
             color: #155724;
         }
-
         .message.error {
             background: #f8d7da;
             color: #721c24;
+        }
+        .message.info {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+        .otp-section {
+            margin-top: 15px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            display: none;
+        }
+        .resend-btn {
+            background: #6c757d;
+            margin-top: 10px;
+        }
+        .resend-btn:hover {
+            background: #5a6268;
         }
     </style>
 </head>
@@ -175,7 +179,14 @@
             <div class="input-group">
                 <input type="password" id="regConfirmPassword" placeholder="Confirm Password">
             </div>
-            <button onclick="register()">Create Account</button>
+            <button onclick="sendOTP()">Send Verification Code</button>
+            <div id="otpSection" class="otp-section">
+                <div class="input-group">
+                    <input type="text" id="otpCode" placeholder="Enter 6-digit OTP">
+                </div>
+                <button onclick="verifyOTP()">Verify & Create Account</button>
+                <button class="resend-btn" onclick="sendOTP()">Resend Code</button>
+            </div>
             <div class="register-link">
                 Already have an account? <a href="#" onclick="showLogin()">Sign in</a>
             </div>
@@ -185,6 +196,8 @@
 
     <script>
         const API_URL = 'https://crypto-trading-api-h6uc.onrender.com';
+        let pendingEmail = '';
+        let pendingPassword = '';
 
         async function login() {
             const email = document.getElementById('email').value;
@@ -223,11 +236,11 @@
                 }
             } catch (error) {
                 messageDiv.className = 'message error';
-                messageDiv.innerText = 'Network error';
+                messageDiv.innerText = 'Network error. Please try again.';
             }
         }
 
-        async function register() {
+        async function sendOTP() {
             const email = document.getElementById('regEmail').value;
             const password = document.getElementById('regPassword').value;
             const confirm = document.getElementById('regConfirmPassword').value;
@@ -251,11 +264,56 @@
                 return;
             }
 
+            messageDiv.className = 'message info';
+            messageDiv.innerText = 'Sending verification code...';
+
             try {
-                const response = await fetch(`${API_URL}/api/register`, {
+                const response = await fetch(`${API_URL}/api/send-otp`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email, password })
+                    body: JSON.stringify({ email })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    pendingEmail = email;
+                    pendingPassword = password;
+                    messageDiv.className = 'message success';
+                    messageDiv.innerText = data.message;
+                    document.getElementById('otpSection').style.display = 'block';
+                } else {
+                    messageDiv.className = 'message error';
+                    messageDiv.innerText = data.message || 'Failed to send OTP';
+                }
+            } catch (error) {
+                messageDiv.className = 'message error';
+                messageDiv.innerText = 'Network error. Please try again.';
+            }
+        }
+
+        async function verifyOTP() {
+            const otp = document.getElementById('otpCode').value;
+            const messageDiv = document.getElementById('regMessage');
+
+            if (!otp || otp.length !== 6) {
+                messageDiv.className = 'message error';
+                messageDiv.innerText = 'Please enter the 6-digit OTP';
+                return;
+            }
+
+            messageDiv.className = 'message info';
+            messageDiv.innerText = 'Verifying...';
+
+            try {
+                const response = await fetch(`${API_URL}/api/verify-otp`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        email: pendingEmail, 
+                        otp: otp,
+                        password: pendingPassword
+                    })
                 });
 
                 const data = await response.json();
@@ -269,17 +327,19 @@
                     }, 1500);
                 } else {
                     messageDiv.className = 'message error';
-                    messageDiv.innerText = data.message || 'Registration failed';
+                    messageDiv.innerText = data.message || 'Verification failed';
                 }
             } catch (error) {
                 messageDiv.className = 'message error';
-                messageDiv.innerText = 'Network error';
+                messageDiv.innerText = 'Network error. Please try again.';
             }
         }
 
         function showRegister() {
             document.getElementById('loginForm').style.display = 'none';
             document.getElementById('registerForm').style.display = 'block';
+            document.getElementById('otpSection').style.display = 'none';
+            document.getElementById('regMessage').innerHTML = '';
         }
 
         function showLogin() {
