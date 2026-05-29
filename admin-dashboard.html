@@ -24,6 +24,22 @@
         }
         .logo h2 { color: white; }
         .logo span { color: #e74c3c; }
+        .tab-buttons {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .tab-btn {
+            background: #16213e;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        .tab-btn.active {
+            background: #e74c3c;
+        }
         .container {
             max-width: 1400px;
             margin: 30px auto;
@@ -47,7 +63,7 @@
             color: #e74c3c;
             margin-top: 10px;
         }
-        .users-table {
+        .requests-table, .users-table {
             background: #16213e;
             border-radius: 10px;
             padding: 20px;
@@ -73,6 +89,9 @@
             margin: 2px;
             font-size: 12px;
         }
+        .btn-provide { background: #17a2b8; color: white; }
+        .btn-confirm { background: #28a745; color: white; }
+        .btn-reject { background: #dc3545; color: white; }
         .btn-deposit { background: #28a745; color: white; }
         .btn-remove { background: #dc3545; color: white; }
         .btn-limit { background: #ffc107; color: black; }
@@ -105,7 +124,7 @@
         .modal-content h3 {
             margin-bottom: 20px;
         }
-        .modal-content input {
+        .modal-content input, .modal-content textarea {
             width: 100%;
             padding: 10px;
             margin: 10px 0;
@@ -121,8 +140,20 @@
             border-radius: 5px;
             cursor: pointer;
         }
-        .btn-confirm { background: #28a745; color: white; }
+        .btn-confirm-modal { background: #28a745; color: white; }
         .btn-cancel { background: #666; color: white; margin-top: 10px; }
+        .badge {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 3px;
+            font-size: 11px;
+            font-weight: bold;
+        }
+        .badge-pending { background: #ffc107; color: black; }
+        .badge-waiting { background: #17a2b8; }
+        .badge-sent { background: #ffc107; color: black; }
+        .badge-completed { background: #28a745; }
+        .badge-rejected { background: #dc3545; }
     </style>
 </head>
 <body>
@@ -134,76 +165,302 @@
     </nav>
 
     <div class="container">
-        <div class="stats-grid">
-            <div class="stat-card">
-                <h3>Total Users</h3>
-                <div class="stat-value" id="totalUsers">0</div>
+        <div class="tab-buttons">
+            <button class="tab-btn active" onclick="showTab('deposits')">💰 Deposit Requests</button>
+            <button class="tab-btn" onclick="showTab('users')">👥 User Management</button>
+        </div>
+
+        <!-- Deposit Requests Tab -->
+        <div id="depositsTab">
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <h3>Pending Requests</h3>
+                    <div class="stat-value" id="pendingCount">0</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Waiting Payment</h3>
+                    <div class="stat-value" id="waitingCount">0</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Payment Sent</h3>
+                    <div class="stat-value" id="paymentSentCount">0</div>
+                </div>
             </div>
-            <div class="stat-card">
-                <h3>Total Balance</h3>
-                <div class="stat-value" id="totalBalance">$0</div>
+
+            <div class="requests-table">
+                <h3 style="margin-bottom: 20px;">Deposit Requests</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>User</th>
+                            <th>Amount</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="requestsList"></tbody>
+                </table>
             </div>
         </div>
 
-        <div class="users-table">
-            <h3 style="margin-bottom: 20px;">User Management</h3>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Email</th>
-                        <th>Balance</th>
-                        <th>Withdraw Limit</th>
-                        <th>Joined</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody id="usersList"></tbody>
-            </table>
+        <!-- Users Tab -->
+        <div id="usersTab" style="display: none;">
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <h3>Total Users</h3>
+                    <div class="stat-value" id="totalUsers">0</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Total Balance</h3>
+                    <div class="stat-value" id="totalBalance">$0</div>
+                </div>
+            </div>
+
+            <div class="users-table">
+                <h3 style="margin-bottom: 20px;">User Management</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Email</th>
+                            <th>Balance</th>
+                            <th>Withdraw Limit</th>
+                            <th>Joined</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="usersList"></tbody>
+                </table>
+            </div>
         </div>
     </div>
 
-    <!-- Deposit Modal -->
-    <div id="depositModal" class="modal">
+    <!-- Provide Wallet Modal -->
+    <div id="walletModal" class="modal">
         <div class="modal-content">
-            <h3>Add Balance</h3>
-            <p id="depositUserEmail"></p>
-            <input type="number" id="depositAmount" placeholder="Amount to add">
-            <button class="btn-confirm" onclick="confirmDeposit()">Add Balance</button>
-            <button class="btn-cancel" onclick="closeModals()">Cancel</button>
+            <h3>Provide Wallet Address</h3>
+            <p id="walletUserInfo"></p>
+            <input type="text" id="walletAddress" placeholder="BTC/ETH/USDT Wallet Address">
+            <button class="btn-confirm-modal" onclick="confirmProvideWallet()">Provide Wallet</button>
+            <button class="btn-cancel" onclick="closeWalletModal()">Cancel</button>
         </div>
     </div>
 
-    <!-- Remove Balance Modal -->
-    <div id="removeModal" class="modal">
+    <!-- Confirm Deposit Modal -->
+    <div id="confirmDepositModal" class="modal">
         <div class="modal-content">
-            <h3>Remove Balance</h3>
-            <p id="removeUserEmail"></p>
-            <input type="number" id="removeAmount" placeholder="Amount to remove">
-            <button class="btn-confirm" onclick="confirmRemove()">Remove Balance</button>
-            <button class="btn-cancel" onclick="closeModals()">Cancel</button>
+            <h3>Confirm Deposit</h3>
+            <p id="confirmDepositInfo"></p>
+            <button class="btn-confirm-modal" onclick="confirmDeposit()">✅ Confirm & Add Funds</button>
+            <button class="btn-cancel" onclick="closeConfirmModal()">Cancel</button>
         </div>
     </div>
 
-    <!-- Update Limit Modal -->
-    <div id="limitModal" class="modal">
+    <!-- Reject Modal -->
+    <div id="rejectModal" class="modal">
         <div class="modal-content">
-            <h3>Update Withdrawal Limit</h3>
-            <p id="limitUserEmail"></p>
-            <input type="number" id="limitAmount" placeholder="New withdrawal limit">
-            <button class="btn-confirm" onclick="confirmUpdateLimit()">Update Limit</button>
-            <button class="btn-cancel" onclick="closeModals()">Cancel</button>
+            <h3>Reject Deposit Request</h3>
+            <p id="rejectUserInfo"></p>
+            <textarea id="rejectReason" placeholder="Reason for rejection" rows="3"></textarea>
+            <button class="btn-confirm-modal" onclick="confirmReject()">Reject</button>
+            <button class="btn-cancel" onclick="closeRejectModal()">Cancel</button>
         </div>
     </div>
 
     <script>
+        let selectedRequestId = null;
         let selectedUserId = null;
         let selectedUserEmail = null;
+        let currentTab = 'deposits';
         const API_URL = 'https://crypto-trading-api-h6uc.onrender.com';
 
         function checkAdmin() {
             const token = localStorage.getItem('adminToken');
             if (!token) {
                 window.location.href = '/admin-login';
+            }
+        }
+
+        function showTab(tab) {
+            currentTab = tab;
+            if (tab === 'deposits') {
+                document.getElementById('depositsTab').style.display = 'block';
+                document.getElementById('usersTab').style.display = 'none';
+                loadDepositRequests();
+            } else {
+                document.getElementById('depositsTab').style.display = 'none';
+                document.getElementById('usersTab').style.display = 'block';
+                loadUsers();
+            }
+            
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            event.target.classList.add('active');
+        }
+
+        async function loadDepositRequests() {
+            try {
+                const token = localStorage.getItem('adminToken');
+                const response = await fetch(`${API_URL}/api/admin/deposit-requests`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await response.json();
+                
+                const pending = data.requests.filter(r => r.status === 'pending').length;
+                const waiting = data.requests.filter(r => r.status === 'waiting_payment').length;
+                const paymentSent = data.requests.filter(r => r.status === 'payment_sent').length;
+                
+                document.getElementById('pendingCount').textContent = pending;
+                document.getElementById('waitingCount').textContent = waiting;
+                document.getElementById('paymentSentCount').textContent = paymentSent;
+                
+                const tbody = document.getElementById('requestsList');
+                tbody.innerHTML = '';
+                
+                data.requests.forEach(req => {
+                    let statusBadge = '';
+                    let actions = '';
+                    
+                    switch(req.status) {
+                        case 'pending':
+                            statusBadge = '<span class="badge badge-pending">Pending</span>';
+                            actions = `<button class="btn btn-provide" onclick="openWalletModal('${req.id}', '${req.userEmail}', '${req.amount}')">Provide Wallet</button>
+                                      <button class="btn btn-reject" onclick="openRejectModal('${req.id}', '${req.userEmail}')">Reject</button>`;
+                            break;
+                        case 'waiting_payment':
+                            statusBadge = '<span class="badge badge-waiting">Waiting Payment</span>';
+                            actions = `<span style="color:#888;">Waiting for client</span>`;
+                            break;
+                        case 'payment_sent':
+                            statusBadge = '<span class="badge badge-sent">Payment Sent</span>';
+                            actions = `<button class="btn btn-confirm" onclick="openConfirmModal('${req.id}', '${req.userEmail}', '${req.amount}')">Confirm Deposit</button>
+                                      <button class="btn btn-reject" onclick="openRejectModal('${req.id}', '${req.userEmail}')">Reject</button>`;
+                            break;
+                        case 'completed':
+                            statusBadge = '<span class="badge badge-completed">Completed</span>';
+                            actions = `<span style="color:#28a745;">✓ Funded</span>`;
+                            break;
+                        case 'rejected':
+                            statusBadge = '<span class="badge badge-rejected">Rejected</span>';
+                            actions = `<span style="color:#dc3545;">Rejected</span>`;
+                            break;
+                    }
+                    
+                    tbody.innerHTML += `
+                        <tr>
+                            <td>${new Date(req.createdAt).toLocaleString()}</td>
+                            <td>${req.userEmail}</td>
+                            <td>$${req.amount}</td>
+                            <td>${statusBadge}</td>
+                            <td>${actions}</td>
+                        </tr>
+                    `;
+                });
+            } catch (error) {
+                console.error('Error:', error);
+            }
+        }
+
+        function openWalletModal(requestId, userEmail, amount) {
+            selectedRequestId = requestId;
+            document.getElementById('walletUserInfo').innerHTML = `User: ${userEmail}<br>Amount: $${amount}`;
+            document.getElementById('walletModal').style.display = 'flex';
+        }
+
+        async function confirmProvideWallet() {
+            const walletAddress = document.getElementById('walletAddress').value;
+            
+            if (!walletAddress) {
+                alert('Please enter a wallet address');
+                return;
+            }
+            
+            try {
+                const token = localStorage.getItem('adminToken');
+                const response = await fetch(`${API_URL}/api/admin/provide-wallet`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ requestId: selectedRequestId, walletAddress })
+                });
+                
+                if (response.ok) {
+                    alert('Wallet address provided. Client can now send payment.');
+                    closeWalletModal();
+                    loadDepositRequests();
+                } else {
+                    const data = await response.json();
+                    alert(data.message || 'Failed');
+                }
+            } catch (error) {
+                alert('Network error');
+            }
+        }
+
+        function openConfirmModal(requestId, userEmail, amount) {
+            selectedRequestId = requestId;
+            document.getElementById('confirmDepositInfo').innerHTML = `User: ${userEmail}<br>Amount: $${amount}<br><br>Confirm to add funds to user account.`;
+            document.getElementById('confirmDepositModal').style.display = 'flex';
+        }
+
+        async function confirmDeposit() {
+            try {
+                const token = localStorage.getItem('adminToken');
+                const response = await fetch(`${API_URL}/api/admin/confirm-deposit`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ requestId: selectedRequestId })
+                });
+                
+                if (response.ok) {
+                    alert('Deposit confirmed and funds added to user account!');
+                    closeConfirmModal();
+                    loadDepositRequests();
+                } else {
+                    const data = await response.json();
+                    alert(data.message || 'Failed');
+                }
+            } catch (error) {
+                alert('Network error');
+            }
+        }
+
+        function openRejectModal(requestId, userEmail) {
+            selectedRequestId = requestId;
+            document.getElementById('rejectUserInfo').innerHTML = `User: ${userEmail}`;
+            document.getElementById('rejectModal').style.display = 'flex';
+        }
+
+        async function confirmReject() {
+            const reason = document.getElementById('rejectReason').value;
+            
+            try {
+                const token = localStorage.getItem('adminToken');
+                const response = await fetch(`${API_URL}/api/admin/reject-deposit`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ requestId: selectedRequestId, reason })
+                });
+                
+                if (response.ok) {
+                    alert('Deposit request rejected');
+                    closeRejectModal();
+                    loadDepositRequests();
+                } else {
+                    const data = await response.json();
+                    alert(data.message || 'Failed');
+                }
+            } catch (error) {
+                alert('Network error');
             }
         }
 
@@ -228,10 +485,8 @@
                             <td>$${user.withdrawLimit.toFixed(2)}</td>
                             <td>${new Date(user.createdAt).toLocaleDateString()}</td>
                             <td>
-                                <button class="btn btn-deposit" onclick="openDepositModal('${user.id}', '${user.email}')">+ Add</button>
-                                <button class="btn btn-remove" onclick="openRemoveModal('${user.id}', '${user.email}')">- Remove</button>
-                                <button class="btn btn-limit" onclick="openLimitModal('${user.id}', '${user.email}')">Limit</button>
-                            </td>
+                                <button class="btn btn-limit" onclick="openLimitModal('${user.id}', '${user.email}')">Set Limit</button>
+                             </td>
                         </tr>
                     `;
                 });
@@ -240,99 +495,18 @@
             }
         }
 
-        // Deposit Modal
-        function openDepositModal(userId, userEmail) {
-            selectedUserId = userId;
-            selectedUserEmail = userEmail;
-            document.getElementById('depositUserEmail').innerText = `User: ${userEmail}`;
-            document.getElementById('depositModal').style.display = 'flex';
-        }
-
-        async function confirmDeposit() {
-            const amount = parseFloat(document.getElementById('depositAmount').value);
-            
-            if (!amount || amount <= 0) {
-                alert('Please enter a valid amount');
-                return;
-            }
-            
-            try {
-                const token = localStorage.getItem('adminToken');
-                const response = await fetch(`${API_URL}/api/admin/deposit`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`
-                    },
-                    body: JSON.stringify({ userId: selectedUserId, amount })
-                });
-                
-                if (response.ok) {
-                    alert(`Added $${amount} to ${selectedUserEmail}`);
-                    closeModals();
-                    loadUsers();
-                } else {
-                    const data = await response.json();
-                    alert(data.message || 'Failed to add balance');
-                }
-            } catch (error) {
-                alert('Network error');
-            }
-        }
-
-        // Remove Balance Modal
-        function openRemoveModal(userId, userEmail) {
-            selectedUserId = userId;
-            selectedUserEmail = userEmail;
-            document.getElementById('removeUserEmail').innerText = `User: ${userEmail}`;
-            document.getElementById('removeModal').style.display = 'flex';
-        }
-
-        async function confirmRemove() {
-            const amount = parseFloat(document.getElementById('removeAmount').value);
-            
-            if (!amount || amount <= 0) {
-                alert('Please enter a valid amount');
-                return;
-            }
-            
-            try {
-                const token = localStorage.getItem('adminToken');
-                const response = await fetch(`${API_URL}/api/admin/remove-balance`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`
-                    },
-                    body: JSON.stringify({ userId: selectedUserId, amount })
-                });
-                
-                if (response.ok) {
-                    alert(`Removed $${amount} from ${selectedUserEmail}`);
-                    closeModals();
-                    loadUsers();
-                } else {
-                    const data = await response.json();
-                    alert(data.message || 'Failed to remove balance');
-                }
-            } catch (error) {
-                alert('Network error');
-            }
-        }
-
-        // Update Limit Modal
         function openLimitModal(userId, userEmail) {
             selectedUserId = userId;
             selectedUserEmail = userEmail;
-            document.getElementById('limitUserEmail').innerText = `User: ${userEmail}`;
-            document.getElementById('limitModal').style.display = 'flex';
+            const newLimit = prompt(`Enter new withdrawal limit for ${userEmail}:`, '1000');
+            if (newLimit !== null) {
+                updateLimit(parseFloat(newLimit));
+            }
         }
 
-        async function confirmUpdateLimit() {
-            const newLimit = parseFloat(document.getElementById('limitAmount').value);
-            
-            if (!newLimit || newLimit < 0) {
-                alert('Please enter a valid limit amount');
+        async function updateLimit(newLimit) {
+            if (isNaN(newLimit) || newLimit < 0) {
+                alert('Please enter a valid amount');
                 return;
             }
             
@@ -348,25 +522,29 @@
                 });
                 
                 if (response.ok) {
-                    alert(`Withdrawal limit for ${selectedUserEmail} updated to $${newLimit}`);
-                    closeModals();
+                    alert(`Withdrawal limit updated to $${newLimit}`);
                     loadUsers();
                 } else {
                     const data = await response.json();
-                    alert(data.message || 'Failed to update limit');
+                    alert(data.message || 'Failed');
                 }
             } catch (error) {
                 alert('Network error');
             }
         }
 
-        function closeModals() {
-            document.getElementById('depositModal').style.display = 'none';
-            document.getElementById('removeModal').style.display = 'none';
-            document.getElementById('limitModal').style.display = 'none';
-            document.getElementById('depositAmount').value = '';
-            document.getElementById('removeAmount').value = '';
-            document.getElementById('limitAmount').value = '';
+        function closeWalletModal() {
+            document.getElementById('walletModal').style.display = 'none';
+            document.getElementById('walletAddress').value = '';
+        }
+
+        function closeConfirmModal() {
+            document.getElementById('confirmDepositModal').style.display = 'none';
+        }
+
+        function closeRejectModal() {
+            document.getElementById('rejectModal').style.display = 'none';
+            document.getElementById('rejectReason').value = '';
         }
 
         function logout() {
@@ -375,7 +553,7 @@
         }
 
         checkAdmin();
-        loadUsers();
+        loadDepositRequests();
     </script>
 </body>
 </html>

@@ -61,24 +61,12 @@
             padding: 0 20px;
         }
 
-        .grid-2 {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 30px;
-        }
-
-        .card {
-            background: white;
-            padding: 30px;
-            border-radius: 15px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
-        }
-
         .balance-card {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
             text-align: center;
             padding: 40px;
+            border-radius: 15px;
             margin-bottom: 30px;
         }
 
@@ -92,6 +80,19 @@
             margin-top: 10px;
             font-size: 14px;
             opacity: 0.9;
+        }
+
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+        }
+
+        .card {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
         }
 
         h2 {
@@ -126,11 +127,11 @@
             margin-top: 15px;
         }
 
-        .deposit-btn {
+        .request-btn {
             background: #28a745;
         }
 
-        .deposit-btn:hover {
+        .request-btn:hover {
             background: #218838;
         }
 
@@ -157,6 +158,58 @@
         .error {
             background: #f8d7da;
             color: #721c24;
+        }
+
+        .info {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+
+        .requests-list {
+            margin-top: 30px;
+            background: white;
+            padding: 20px;
+            border-radius: 15px;
+        }
+
+        .request-item {
+            border: 1px solid #e0e0e0;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 8px;
+        }
+
+        .status-pending {
+            color: #ffc107;
+            font-weight: bold;
+        }
+
+        .status-waiting_payment {
+            color: #17a2b8;
+            font-weight: bold;
+        }
+
+        .status-payment_sent {
+            color: #ffc107;
+            font-weight: bold;
+        }
+
+        .status-completed {
+            color: #28a745;
+            font-weight: bold;
+        }
+
+        .status-rejected {
+            color: #dc3545;
+            font-weight: bold;
+        }
+
+        .wallet-address {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 5px;
+            font-family: monospace;
+            word-break: break-all;
         }
 
         .back-link {
@@ -195,26 +248,30 @@
         </div>
 
         <div class="grid-2">
-            <!-- Deposit Section -->
+            <!-- Request Deposit Section -->
             <div class="card">
-                <h2>💳 Deposit Funds</h2>
-                <input type="number" id="depositAmount" placeholder="Enter amount">
-                <select id="paymentMethod">
-                    <option value="Bank Transfer">Bank Transfer</option>
-                    <option value="Credit Card">Credit Card</option>
-                    <option value="Crypto">Crypto (BTC/ETH/USDT)</option>
-                </select>
-                <button class="deposit-btn" onclick="deposit()">Deposit</button>
+                <h2>💰 Request Deposit</h2>
+                <p style="color: #666; margin-bottom: 15px;">Request to add funds. Admin will provide wallet address.</p>
+                <input type="number" id="depositAmount" placeholder="Enter amount to deposit">
+                <button class="request-btn" onclick="requestDeposit()">Request Deposit</button>
                 <div id="depositMessage" class="message"></div>
             </div>
 
             <!-- Withdraw Section -->
             <div class="card">
-                <h2>💰 Withdraw Funds</h2>
-                <input type="number" id="withdrawAmount" placeholder="Enter amount (Max: $<span id="maxWithdraw">0</span>)">
+                <h2>💸 Withdraw Funds</h2>
+                <input type="number" id="withdrawAmount" placeholder="Enter amount">
                 <input type="text" id="walletAddress" placeholder="Wallet Address (BTC/ETH/USDT)">
                 <button class="withdraw-btn" onclick="withdraw()">Withdraw</button>
                 <div id="withdrawMessage" class="message"></div>
+            </div>
+        </div>
+
+        <!-- Deposit Requests History -->
+        <div class="requests-list">
+            <h2>📋 My Deposit Requests</h2>
+            <div id="requestsContainer">
+                <p>Loading...</p>
             </div>
         </div>
 
@@ -240,15 +297,79 @@
                 
                 document.getElementById('balance').textContent = `$${data.balance.toFixed(2)}`;
                 document.getElementById('withdrawLimit').textContent = data.withdrawLimit;
-                document.getElementById('maxWithdraw').textContent = data.withdrawLimit;
             } catch (error) {
                 console.error('Error:', error);
             }
         }
 
-        async function deposit() {
+        async function loadDepositRequests() {
+            try {
+                const response = await fetch(`${API_URL}/api/my-deposit-requests`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await response.json();
+                
+                const container = document.getElementById('requestsContainer');
+                
+                if (data.requests.length === 0) {
+                    container.innerHTML = '<p>No deposit requests yet.</p>';
+                    return;
+                }
+                
+                container.innerHTML = data.requests.map(req => {
+                    let statusText = '';
+                    let statusClass = '';
+                    let actionHtml = '';
+                    
+                    switch(req.status) {
+                        case 'pending':
+                            statusText = 'Waiting for admin to provide wallet address';
+                            statusClass = 'status-pending';
+                            actionHtml = '<div class="info" style="margin-top:10px;">⏳ Admin will provide wallet address shortly</div>';
+                            break;
+                        case 'waiting_payment':
+                            statusText = 'Wallet address provided - Send payment';
+                            statusClass = 'status-waiting_payment';
+                            actionHtml = `
+                                <div class="wallet-address" style="margin:10px 0;">
+                                    <strong>Send payment to:</strong><br>
+                                    ${req.adminWallet}
+                                </div>
+                                <input type="text" id="txId_${req.id}" placeholder="Transaction ID / Hash" style="width:100%; padding:8px; margin:5px 0;">
+                                <button onclick="confirmPayment('${req.id}')" style="background:#28a745; margin-top:5px;">I Have Sent the Payment</button>
+                            `;
+                            break;
+                        case 'payment_sent':
+                            statusText = 'Payment submitted - Awaiting admin confirmation';
+                            statusClass = 'status-payment_sent';
+                            actionHtml = '<div class="info" style="margin-top:10px;">⏳ Admin is verifying your payment</div>';
+                            break;
+                        case 'completed':
+                            statusText = 'Completed - Funds added to your account';
+                            statusClass = 'status-completed';
+                            break;
+                        case 'rejected':
+                            statusText = `Rejected: ${req.rejectionReason || 'No reason provided'}`;
+                            statusClass = 'status-rejected';
+                            break;
+                    }
+                    
+                    return `
+                        <div class="request-item">
+                            <strong>Amount:</strong> $${req.amount}<br>
+                            <strong>Date:</strong> ${new Date(req.createdAt).toLocaleString()}<br>
+                            <strong>Status:</strong> <span class="${statusClass}">${statusText}</span>
+                            ${actionHtml}
+                        </div>
+                    `;
+                }).join('');
+            } catch (error) {
+                console.error('Error:', error);
+            }
+        }
+
+        async function requestDeposit() {
             const amount = parseFloat(document.getElementById('depositAmount').value);
-            const paymentMethod = document.getElementById('paymentMethod').value;
             const messageDiv = document.getElementById('depositMessage');
 
             if (!amount || amount <= 0) {
@@ -258,13 +379,13 @@
             }
 
             try {
-                const response = await fetch(`${API_URL}/api/deposit`, {
+                const response = await fetch(`${API_URL}/api/request-deposit`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         'Authorization': `Bearer ${token}`
                     },
-                    body: JSON.stringify({ amount, paymentMethod })
+                    body: JSON.stringify({ amount })
                 });
 
                 const data = await response.json();
@@ -273,15 +394,45 @@
                     messageDiv.className = 'message success';
                     messageDiv.innerText = data.message;
                     document.getElementById('depositAmount').value = '';
-                    loadUserInfo();
-                    
-                    // Also update dashboard balance if needed
-                    setTimeout(() => {
-                        loadUserInfo();
-                    }, 1000);
+                    loadDepositRequests();
                 } else {
                     messageDiv.className = 'message error';
-                    messageDiv.innerText = data.message || 'Deposit failed';
+                    messageDiv.innerText = data.message || 'Request failed';
+                }
+            } catch (error) {
+                messageDiv.className = 'message error';
+                messageDiv.innerText = 'Network error';
+            }
+        }
+
+        async function confirmPayment(requestId) {
+            const transactionId = document.getElementById(`txId_${requestId}`).value;
+            const messageDiv = document.getElementById('depositMessage');
+
+            if (!transactionId) {
+                alert('Please enter the transaction ID or hash');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_URL}/api/confirm-payment`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ requestId, transactionId })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    messageDiv.className = 'message success';
+                    messageDiv.innerText = data.message;
+                    loadDepositRequests();
+                } else {
+                    messageDiv.className = 'message error';
+                    messageDiv.innerText = data.message || 'Confirmation failed';
                 }
             } catch (error) {
                 messageDiv.className = 'message error';
@@ -340,6 +491,7 @@
         }
 
         loadUserInfo();
+        loadDepositRequests();
     </script>
 </body>
 </html>
