@@ -69,21 +69,29 @@
             text-align: center;
             margin-top: 10px;
         }
-        .info {
-            color: #17a2b8;
-            text-align: center;
-            margin-top: 10px;
-        }
-        .otp-section {
+        .setup-section {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 10px;
             display: none;
-            margin-top: 15px;
         }
-        .back-btn {
-            background: #6c757d;
+        .secret-key {
+            background: #1a1a2e;
+            color: #e74c3c;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 18px;
+            text-align: center;
+            letter-spacing: 2px;
+            word-break: break-all;
+            margin: 15px 0;
+        }
+        .copy-btn {
+            background: #28a745;
             margin-top: 5px;
-        }
-        .back-btn:hover {
-            background: #5a6268;
+            padding: 8px;
         }
     </style>
 </head>
@@ -94,107 +102,121 @@
             <span>ADMIN PORTAL</span>
         </div>
         
-        <!-- Step 1: Email Section -->
-        <div id="emailSection">
+        <!-- Login Form -->
+        <div id="loginForm">
             <input type="email" id="adminEmail" placeholder="Admin Email" value="jkkevin00@gmail.com">
-            <button onclick="sendOTP()">Send Verification Code</button>
-            <div id="emailMessage" class="error"></div>
+            <input type="password" id="adminPassword" placeholder="Password">
+            <input type="text" id="twoFactorCode" placeholder="Google Authenticator Code">
+            <button onclick="adminLogin()">Login</button>
+            <div id="loginMessage" class="error"></div>
         </div>
 
-        <!-- Step 2: OTP Section (hidden initially) -->
-        <div id="otpSection" class="otp-section">
-            <input type="text" id="otpCode" placeholder="Enter 6-digit OTP">
-            <button onclick="verifyOTP()">Verify & Login</button>
-            <button class="back-btn" onclick="backToEmail()">← Back</button>
-            <div id="otpMessage" class="error"></div>
+        <!-- 2FA Setup Section -->
+        <div id="setupSection" class="setup-section">
+            <h3 style="margin-bottom: 10px;">Setup Google Authenticator</h3>
+            <p>Add this secret key to Google Authenticator:</p>
+            <div id="secretKeyDisplay" class="secret-key">Loading...</div>
+            <button class="copy-btn" onclick="copySecret()">Copy Secret Key</button>
+            <p style="font-size: 12px; margin-top: 10px;">Steps:</p>
+            <ol style="font-size: 11px; color: #666; margin-left: 20px;">
+                <li>Open Google Authenticator app</li>
+                <li>Tap "+" → "Enter a setup key"</li>
+                <li>Account name: <strong>ClutchAdmin</strong></li>
+                <li>Key: Paste the secret key above</li>
+                <li>Type: Time-based (TOTP)</li>
+                <li>Tap "Add"</li>
+            </ol>
+            <button onclick="enable2FA()" style="background:#28a745; margin-top: 15px;">I've Added the Key → Continue</button>
+            <button onclick="hideSetup()" style="background:#6c757d;">Cancel</button>
         </div>
     </div>
 
     <script>
         const API_URL = 'https://crypto-trading-api-h6uc.onrender.com';
-        let adminEmail = '';
+        let twoFactorSecret = null;
 
-        async function sendOTP() {
+        async function adminLogin() {
             const email = document.getElementById('adminEmail').value;
-            const emailMessage = document.getElementById('emailMessage');
-            
-            if (!email) {
-                emailMessage.innerText = 'Please enter your admin email';
+            const password = document.getElementById('adminPassword').value;
+            const twoFactorCode = document.getElementById('twoFactorCode').value;
+            const messageDiv = document.getElementById('loginMessage');
+
+            if (!email || !password || !twoFactorCode) {
+                messageDiv.innerText = 'Please fill all fields';
                 return;
             }
-            
-            adminEmail = email;
-            emailMessage.innerText = 'Sending verification code...';
-            emailMessage.className = 'info';
-            
+
             try {
-                const response = await fetch(`${API_URL}/api/admin/send-otp`, {
+                const response = await fetch(`${API_URL}/api/admin/login`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email })
+                    body: JSON.stringify({ email, password, twoFactorCode })
                 });
-                
+
                 const data = await response.json();
-                
-                if (response.ok) {
-                    emailMessage.innerText = '✅ OTP sent to your email!';
-                    emailMessage.className = 'success';
-                    document.getElementById('emailSection').style.display = 'none';
-                    document.getElementById('otpSection').style.display = 'block';
-                } else {
-                    emailMessage.innerText = data.message || 'Failed to send OTP';
-                    emailMessage.className = 'error';
-                }
-            } catch (error) {
-                emailMessage.innerText = 'Network error. Please try again.';
-                emailMessage.className = 'error';
-            }
-        }
-        
-        async function verifyOTP() {
-            const otp = document.getElementById('otpCode').value;
-            const otpMessage = document.getElementById('otpMessage');
-            
-            if (!otp || otp.length !== 6) {
-                otpMessage.innerText = 'Please enter the 6-digit OTP';
-                return;
-            }
-            
-            otpMessage.innerText = 'Verifying...';
-            otpMessage.className = 'info';
-            
-            try {
-                const response = await fetch(`${API_URL}/api/admin/verify-otp`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email: adminEmail, otp })
-                });
-                
-                const data = await response.json();
-                
+
                 if (response.ok) {
                     localStorage.setItem('adminToken', data.token);
-                    otpMessage.innerText = 'Login successful! Redirecting...';
-                    otpMessage.className = 'success';
+                    messageDiv.className = 'success';
+                    messageDiv.innerText = 'Login successful! Redirecting...';
                     setTimeout(() => {
                         window.location.href = '/admin-dashboard';
                     }, 1500);
                 } else {
-                    otpMessage.innerText = data.message || 'Invalid OTP';
-                    otpMessage.className = 'error';
+                    if (data.message === '2FA not set up') {
+                        setup2FA(email);
+                    } else {
+                        messageDiv.innerText = data.message || 'Login failed';
+                    }
                 }
             } catch (error) {
-                otpMessage.innerText = 'Network error. Please try again.';
-                otpMessage.className = 'error';
+                messageDiv.innerText = 'Network error';
             }
         }
-        
-        function backToEmail() {
-            document.getElementById('emailSection').style.display = 'block';
-            document.getElementById('otpSection').style.display = 'none';
-            document.getElementById('otpCode').value = '';
-            document.getElementById('emailMessage').innerText = '';
-            document.getElementById('otpMessage').innerText = '';
+
+        async function setup2FA(email) {
+            try {
+                const response = await fetch(`${API_URL}/api/admin/setup-2fa?email=${email}`);
+                const data = await response.json();
+                
+                twoFactorSecret = data.secret;
+                document.getElementById('secretKeyDisplay').innerHTML = twoFactorSecret;
+                document.getElementById('setupSection').style.display = 'block';
+                document.getElementById('loginForm').style.display = 'none';
+            } catch (error) {
+                alert('Failed to setup 2FA');
+            }
+        }
+
+        function copySecret() {
+            navigator.clipboard.writeText(twoFactorSecret);
+            alert('Secret key copied! Paste it in Google Authenticator');
+        }
+
+        async function enable2FA() {
+            const email = document.getElementById('adminEmail').value;
+            
+            try {
+                const response = await fetch(`${API_URL}/api/admin/save-2fa-secret`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, secret: twoFactorSecret })
+                });
+                
+                if (response.ok) {
+                    alert('2FA enabled! Now login with Google Authenticator code');
+                    document.getElementById('setupSection').style.display = 'none';
+                    document.getElementById('loginForm').style.display = 'block';
+                    document.getElementById('twoFactorCode').value = '';
+                }
+            } catch (error) {
+                alert('Failed to enable 2FA');
+            }
+        }
+
+        function hideSetup() {
+            document.getElementById('setupSection').style.display = 'none';
+            document.getElementById('loginForm').style.display = 'block';
         }
     </script>
 </body>
