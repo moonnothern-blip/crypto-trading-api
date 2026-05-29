@@ -262,12 +262,10 @@ app.post('/api/admin/approve-withdrawal', (req, res) => {
     return res.status(404).json({ message: 'User not found' });
   }
   
-  // Check again for sufficient balance
   if (user.balance < request.amount) {
     return res.status(400).json({ message: 'Insufficient balance now' });
   }
   
-  // Remove balance from user
   user.balance -= request.amount;
   
   request.status = 'approved';
@@ -555,7 +553,7 @@ app.get('/api/dashboard', (req, res) => {
 
 // Place order
 app.post('/api/place-order', (req, res) => {
-  const { symbol, type, side, amount, price, currentPrice } = req.body;
+  const { symbol, type, side, amount, price, currentPrice, walletType, timeframe } = req.body;
   const token = req.headers.authorization?.split(' ')[1];
   
   if (!token) {
@@ -580,7 +578,6 @@ app.post('/api/place-order', (req, res) => {
       return res.status(400).json({ message: 'Insufficient balance' });
     }
     
-    // For market orders, execute immediately
     if (type === 'market') {
       user.balance -= totalCost;
       const newOrder = {
@@ -593,16 +590,18 @@ app.post('/api/place-order', (req, res) => {
         price: executePrice,
         filled: amount,
         status: 'filled',
+        walletType: walletType || 'BTC',
+        timeframe: timeframe || 60,
         createdAt: new Date()
       };
       orders.push(newOrder);
       
       return res.json({ 
         message: `Bought ${(amount / executePrice).toFixed(6)} ${symbol} at $${executePrice}`,
-        newBalance: user.balance
+        newBalance: user.balance,
+        orderId: newOrder.id
       });
     } else {
-      // Limit order - pending
       const newOrder = {
         id: Date.now().toString(),
         userId: user.id,
@@ -613,6 +612,8 @@ app.post('/api/place-order', (req, res) => {
         price: price,
         filled: 0,
         status: 'open',
+        walletType: walletType || 'BTC',
+        timeframe: timeframe || 60,
         createdAt: new Date()
       };
       orders.push(newOrder);
@@ -622,8 +623,7 @@ app.post('/api/place-order', (req, res) => {
         orderId: newOrder.id
       });
     }
-  } else { // sell
-    // For market orders, execute immediately
+  } else {
     if (type === 'market') {
       user.balance += totalCost;
       const newOrder = {
@@ -636,13 +636,16 @@ app.post('/api/place-order', (req, res) => {
         price: executePrice,
         filled: amount,
         status: 'filled',
+        walletType: walletType || 'BTC',
+        timeframe: timeframe || 60,
         createdAt: new Date()
       };
       orders.push(newOrder);
       
       return res.json({ 
         message: `Sold ${(amount / executePrice).toFixed(6)} ${symbol} at $${executePrice}`,
-        newBalance: user.balance
+        newBalance: user.balance,
+        orderId: newOrder.id
       });
     } else {
       const newOrder = {
@@ -655,6 +658,8 @@ app.post('/api/place-order', (req, res) => {
         price: price,
         filled: 0,
         status: 'open',
+        walletType: walletType || 'BTC',
+        timeframe: timeframe || 60,
         createdAt: new Date()
       };
       orders.push(newOrder);
