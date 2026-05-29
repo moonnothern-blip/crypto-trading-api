@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard - Crypto Trading</title>
+    <title>Rumble Incorporated - Dashboard</title>
     <style>
         * {
             margin: 0;
@@ -12,39 +12,57 @@
         }
 
         body {
-            font-family: Arial, sans-serif;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background: #f5f5f5;
         }
 
         .navbar {
-            background: white;
+            background: #1a1a2e;
             padding: 15px 30px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
             display: flex;
             justify-content: space-between;
             align-items: center;
+            position: sticky;
+            top: 0;
+            z-index: 100;
         }
 
-        .logo {
+        .logo h1 {
+            color: white;
             font-size: 24px;
-            font-weight: bold;
-            color: #667eea;
+        }
+
+        .logo span {
+            color: #e74c3c;
+            font-size: 10px;
+            letter-spacing: 2px;
         }
 
         .nav-links a {
-            margin-left: 20px;
+            color: white;
             text-decoration: none;
-            color: #333;
+            margin-left: 25px;
+            transition: color 0.3s;
+        }
+
+        .nav-links a:hover {
+            color: #e74c3c;
         }
 
         .logout-btn {
-            background: #dc3545;
+            background: #e74c3c;
             color: white;
             border: none;
-            padding: 8px 16px;
+            padding: 8px 20px;
             border-radius: 5px;
             cursor: pointer;
-            margin-left: 20px;
+            margin-left: 25px;
+            transition: all 0.3s;
+        }
+
+        .logout-btn:hover {
+            background: #c0392b;
         }
 
         .container {
@@ -54,65 +72,111 @@
         }
 
         .welcome-card {
-            background: white;
-            padding: 30px;
-            border-radius: 10px;
-            margin-bottom: 20px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 40px;
+            border-radius: 15px;
+            margin-bottom: 30px;
+        }
+
+        .welcome-card h2 {
+            font-size: 28px;
+            margin-bottom: 10px;
         }
 
         .stats-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
             gap: 20px;
-            margin-top: 20px;
+            margin-bottom: 30px;
         }
 
         .stat-card {
             background: white;
-            padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            padding: 25px;
+            border-radius: 15px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            transition: transform 0.3s;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .stat-card h3 {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 10px;
         }
 
         .stat-value {
             font-size: 32px;
             font-weight: bold;
-            color: #667eea;
-            margin-top: 10px;
+            color: #1a1a2e;
+        }
+
+        .quick-actions {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+
+        .action-btn {
+            background: #1a1a2e;
+            color: white;
+            padding: 15px;
+            text-align: center;
+            border-radius: 10px;
+            text-decoration: none;
+            transition: all 0.3s;
+        }
+
+        .action-btn:hover {
+            background: #e74c3c;
+            transform: translateY(-2px);
         }
     </style>
 </head>
 <body>
     <nav class="navbar">
-        <div class="logo">CryptoTrade</div>
+        <div class="logo">
+            <h1>RUMBLE</h1>
+            <span>INCORPORATED</span>
+        </div>
         <div class="nav-links">
             <a href="/dashboard">Dashboard</a>
             <a href="/trading">Trading</a>
             <a href="/wallet">Wallet</a>
+            <a href="/admin">Admin</a>
             <button class="logout-btn" onclick="logout()">Logout</button>
         </div>
     </nav>
 
     <div class="container">
         <div class="welcome-card">
-            <h2>Welcome, <span id="userEmail">User</span>!</h2>
-            <p>Your crypto trading dashboard is ready.</p>
+            <h2>Welcome back, <span id="userEmail">Trader</span>!</h2>
+            <p>Your crypto trading dashboard is ready. Start trading now.</p>
         </div>
 
         <div class="stats-grid">
             <div class="stat-card">
                 <h3>Portfolio Value</h3>
-                <div class="stat-value">$0.00</div>
+                <div class="stat-value" id="portfolioValue">$0.00</div>
             </div>
             <div class="stat-card">
                 <h3>24h Change</h3>
-                <div class="stat-value">0%</div>
+                <div class="stat-value" id="changeValue">0%</div>
             </div>
             <div class="stat-card">
                 <h3>Open Orders</h3>
-                <div class="stat-value">0</div>
+                <div class="stat-value" id="openOrders">0</div>
             </div>
+        </div>
+
+        <div class="quick-actions">
+            <a href="/trading" class="action-btn">🚀 Start Trading</a>
+            <a href="/wallet" class="action-btn">💰 Deposit Funds</a>
+            <a href="/admin" class="action-btn">⚙️ Admin Panel</a>
         </div>
     </div>
 
@@ -120,12 +184,10 @@
         const API_URL = 'https://crypto-trading-api-h6uc.onrender.com';
         const token = localStorage.getItem('token');
 
-        // Check if logged in
         if (!token) {
             window.location.href = '/';
         }
 
-        // Load user data
         async function loadDashboard() {
             try {
                 const response = await fetch(`${API_URL}/api/dashboard`, {
@@ -134,7 +196,7 @@
 
                 if (response.ok) {
                     const data = await response.json();
-                    document.getElementById('userEmail').textContent = data.user.email;
+                    document.getElementById('userEmail').textContent = data.user.email.split('@')[0];
                 } else {
                     logout();
                 }
@@ -145,6 +207,7 @@
 
         function logout() {
             localStorage.removeItem('token');
+            localStorage.removeItem('rememberedEmail');
             window.location.href = '/';
         }
 
