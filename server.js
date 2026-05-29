@@ -9,13 +9,14 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static('.'));
 
-// Users storage with balances
+// Users storage with balances and limits
 let users = [
   {
     id: 'admin1',
     email: 'admin@clutch.com',
     password: 'admin123',
     balance: 0,
+    withdrawLimit: 0, // 0 means no limit for admin
     isAdmin: true,
     createdAt: new Date()
   }
@@ -65,6 +66,7 @@ app.post('/api/register', (req, res) => {
     email: email,
     password: password,
     balance: 0,
+    withdrawLimit: 1000, // Default daily withdraw limit
     isAdmin: false,
     createdAt: new Date()
   };
@@ -74,7 +76,11 @@ app.post('/api/register', (req, res) => {
   res.json({ 
     message: 'Registration successful', 
     token: newUser.id,
-    user: { email: email, balance: 0 }
+    user: { 
+      email: email, 
+      balance: 0,
+      withdrawLimit: 1000
+    }
   });
 });
 
@@ -94,13 +100,14 @@ app.post('/api/login', (req, res) => {
     user: { 
       email: user.email, 
       balance: user.balance,
+      withdrawLimit: user.withdrawLimit,
       isAdmin: user.isAdmin || false
     }
   });
 });
 
-// Get user balance
-app.get('/api/balance', (req, res) => {
+// Get user balance and limits
+app.get('/api/user-info', (req, res) => {
   const token = req.headers.authorization?.split(' ')[1];
   
   if (!token) {
@@ -113,10 +120,45 @@ app.get('/api/balance', (req, res) => {
     return res.status(401).json({ message: 'Invalid token' });
   }
   
-  res.json({ balance: user.balance });
+  res.json({ 
+    balance: user.balance,
+    withdrawLimit: user.withdrawLimit,
+    email: user.email
+  });
 });
 
-// Deposit (Admin only)
+// Client Deposit (User adds funds themselves)
+app.post('/api/deposit', (req, res) => {
+  const { amount, paymentMethod } = req.body;
+  const token = req.headers.authorization?.split(' ')[1];
+  
+  if (!token) {
+    return res.status(401).json({ message: 'Unauthorized' });
+  }
+  
+  const user = users.find(u => u.id === token);
+  
+  if (!user) {
+    return res.status(401).json({ message: 'Invalid token' });
+  }
+  
+  if (!amount || amount <= 0) {
+    return res.status(400).json({ message: 'Invalid amount' });
+  }
+  
+  // Add balance
+  user.balance += amount;
+  
+  // In production, this would integrate with Stripe/PayPal
+  // For now, it's a simulated deposit
+  
+  res.json({ 
+    message: `Successfully deposited $${amount} via ${paymentMethod}`,
+    newBalance: user.balance
+  });
+});
+
+// Admin Deposit (Admin adds funds to any user)
 app.post('/api/admin/deposit', (req, res) => {
   const { userId, amount } = req.body;
   const adminToken = req.headers.authorization?.split(' ')[1];
@@ -131,6 +173,10 @@ app.post('/api/admin/deposit', (req, res) => {
     return res.status(404).json({ message: 'User not found' });
   }
   
+  if (!amount || amount <= 0) {
+    return res.status(400).json({ message: 'Invalid amount' });
+  }
+  
   user.balance += amount;
   
   res.json({ 
@@ -141,7 +187,7 @@ app.post('/api/admin/deposit', (req, res) => {
 
 // Withdraw (User)
 app.post('/api/withdraw', (req, res) => {
-  const { amount } = req.body;
+  const { amount, walletAddress } = req.body;
   const token = req.headers.authorization?.split(' ')[1];
   
   if (!token) {
@@ -154,14 +200,87 @@ app.post('/api/withdraw', (req, res) => {
     return res.status(401).json({ message: 'Invalid token' });
   }
   
+  if (!amount || amount <= 0) {
+    return res.status(400).json({ message: 'Invalid amount' });
+  }
+  
+  // Check withdrawal limit
+  if (amount > user.withdrawLimit) {
+    return res.status(400).json({ 
+      message: `Withdrawal limit exceeded. Your limit is $${user.withdrawLimit} per transaction` 
+    });
+  }
+  
   if (user.balance < amount) {
     return res.status(400).json({ message: 'Insufficient balance' });
+  }
+  
+  if (!walletAddress) {
+    return res.status(400).json({ message: 'Wallet address required' });
   }
   
   user.balance -= amount;
   
   res.json({ 
-    message: `Withdrawn $${amount} successfully`,
+    message: `Withdrawal request submitted: $${amount} to ${walletAddress.substring(0, 10)}...`,
+    newBalance: user.balance
+  });
+});
+
+// Admin Update Withdrawal Limit
+app.post('/api/admin/update-limit', (req, res) => {
+  const { userId, newLimit } = req.body;
+  const adminToken = req.headers.authorization?.split(' ')[1];
+  
+  const admin = users.find(u => u.id === adminToken && u.isAdmin === true);
+  if (!admin) {
+    return res.status(403).json({ message: 'Admin access required' });
+  }
+  
+  const user = users.find(u => u.id === userId);
+  if (!user) {
+    return res.status(404).json({ message: 'User not found' });
+  }
+  
+  if (!newLimit || newLimit < 0) {
+    return res.status(400).json({ message: 'Invalid limit amount' });
+  }
+  
+  user.withdrawLimit = newLimit;
+  
+  res.json({ 
+    message: `Withdrawal limit for ${user.email} updated to $${newLimit}`,
+    newLimit: user.withdrawLimit
+  });
+});
+
+// Admin Remove Balance (Subtract funds)
+app.post('/api/admin/remove-balance', (req, res) => {
+  const { userId, amount } = req.body;
+  const adminToken = req.headers.authorization?.split(' ')[1];
+  
+  const admin = users.find(u => u.id === adminToken && u.isAdmin === true);
+  if (!admin) {
+    return res.status(403).json({ message: 'Admin access required' });
+  }
+  
+  const user = users.find(u => u.id === userId);
+  if (!user) {
+    return res.status(404).json({ message: 'User not found' });
+  }
+  
+  if (!amount || amount <= 0) {
+    return res.status(400).json({ message: 'Invalid amount' });
+  }
+  
+  if (user.balance < amount) {
+    return res.status(400).json({ message: 'User does not have sufficient balance' });
+  }
+  
+  user.balance -= amount;
+  
+  res.json({ 
+    message: `Removed $${amount} from ${user.email}`,
     newBalance: user.balance
   });
 });
@@ -183,7 +302,8 @@ app.get('/api/dashboard', (req, res) => {
   res.json({ 
     user: { 
       email: user.email, 
-      balance: user.balance 
+      balance: user.balance,
+      withdrawLimit: user.withdrawLimit
     }
   });
 });
@@ -204,6 +324,7 @@ app.get('/api/admin/users', (req, res) => {
       id: u.id,
       email: u.email,
       balance: u.balance,
+      withdrawLimit: u.withdrawLimit,
       createdAt: u.createdAt
     })),
     totalUsers: nonAdmins.length,

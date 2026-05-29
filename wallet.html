@@ -41,25 +41,57 @@
             background: none;
             border: none;
             cursor: pointer;
+            font-size: 16px;
+        }
+
+        .nav-links a:hover, .nav-links button:hover {
+            color: #e74c3c;
         }
 
         .logout-btn {
             background: #e74c3c;
             padding: 8px 20px;
             border-radius: 5px;
+            color: white !important;
         }
 
         .container {
-            max-width: 600px;
-            margin: 50px auto;
+            max-width: 1200px;
+            margin: 30px auto;
             padding: 0 20px;
+        }
+
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
         }
 
         .card {
             background: white;
-            padding: 40px;
+            padding: 30px;
             border-radius: 15px;
             box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+
+        .balance-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            text-align: center;
+            padding: 40px;
+            margin-bottom: 30px;
+        }
+
+        .balance-amount {
+            font-size: 48px;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+
+        .limit-info {
+            margin-top: 10px;
+            font-size: 14px;
+            opacity: 0.9;
         }
 
         h2 {
@@ -67,43 +99,46 @@
             color: #333;
         }
 
-        .balance-info {
-            background: #f8f9fa;
-            padding: 20px;
-            border-radius: 10px;
-            margin-bottom: 30px;
-            text-align: center;
+        h3 {
+            margin-bottom: 15px;
+            color: #555;
         }
 
-        .balance-amount {
-            font-size: 36px;
-            font-weight: bold;
-            color: #1a1a2e;
-        }
-
-        input {
+        input, select {
             width: 100%;
-            padding: 15px;
+            padding: 12px;
             margin: 10px 0;
             border: 2px solid #e0e0e0;
-            border-radius: 10px;
+            border-radius: 8px;
             font-size: 16px;
         }
 
         button {
             width: 100%;
-            padding: 15px;
-            background: #e74c3c;
+            padding: 12px;
+            background: #1a1a2e;
             color: white;
             border: none;
-            border-radius: 10px;
+            border-radius: 8px;
             font-size: 16px;
             font-weight: bold;
             cursor: pointer;
-            margin-top: 20px;
+            margin-top: 15px;
         }
 
-        button:hover {
+        .deposit-btn {
+            background: #28a745;
+        }
+
+        .deposit-btn:hover {
+            background: #218838;
+        }
+
+        .withdraw-btn {
+            background: #e74c3c;
+        }
+
+        .withdraw-btn:hover {
             background: #c0392b;
         }
 
@@ -130,6 +165,12 @@
             margin-top: 20px;
             color: #666;
         }
+
+        @media (max-width: 768px) {
+            .grid-2 {
+                grid-template-columns: 1fr;
+            }
+        }
     </style>
 </head>
 <body>
@@ -147,23 +188,38 @@
     </nav>
 
     <div class="container">
-        <div class="card">
-            <h2>Withdraw Funds</h2>
-            
-            <div class="balance-info">
-                <div>Available Balance</div>
-                <div class="balance-amount" id="balance">$0.00</div>
+        <div class="balance-card">
+            <div>Available Balance</div>
+            <div class="balance-amount" id="balance">$0.00</div>
+            <div class="limit-info">Withdrawal Limit: $<span id="withdrawLimit">0</span> per transaction</div>
+        </div>
+
+        <div class="grid-2">
+            <!-- Deposit Section -->
+            <div class="card">
+                <h2>💳 Deposit Funds</h2>
+                <input type="number" id="depositAmount" placeholder="Enter amount">
+                <select id="paymentMethod">
+                    <option value="Bank Transfer">Bank Transfer</option>
+                    <option value="Credit Card">Credit Card</option>
+                    <option value="Crypto">Crypto (BTC/ETH/USDT)</option>
+                </select>
+                <button class="deposit-btn" onclick="deposit()">Deposit</button>
+                <div id="depositMessage" class="message"></div>
             </div>
 
-            <input type="number" id="amount" placeholder="Enter amount to withdraw">
-            <input type="text" id="walletAddress" placeholder="Wallet Address (BTC/ETH/USDT)">
-            
-            <button onclick="withdraw()">Withdraw</button>
-            
-            <div id="message" class="message"></div>
-            <div class="back-link">
-                <a href="/dashboard">← Back to Dashboard</a>
+            <!-- Withdraw Section -->
+            <div class="card">
+                <h2>💰 Withdraw Funds</h2>
+                <input type="number" id="withdrawAmount" placeholder="Enter amount (Max: $<span id="maxWithdraw">0</span>)">
+                <input type="text" id="walletAddress" placeholder="Wallet Address (BTC/ETH/USDT)">
+                <button class="withdraw-btn" onclick="withdraw()">Withdraw</button>
+                <div id="withdrawMessage" class="message"></div>
             </div>
+        </div>
+
+        <div class="back-link">
+            <a href="/dashboard">← Back to Dashboard</a>
         </div>
     </div>
 
@@ -175,22 +231,25 @@
             window.location.href = '/';
         }
 
-        async function loadBalance() {
+        async function loadUserInfo() {
             try {
-                const response = await fetch(`${API_URL}/api/balance`, {
+                const response = await fetch(`${API_URL}/api/user-info`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
                 const data = await response.json();
+                
                 document.getElementById('balance').textContent = `$${data.balance.toFixed(2)}`;
+                document.getElementById('withdrawLimit').textContent = data.withdrawLimit;
+                document.getElementById('maxWithdraw').textContent = data.withdrawLimit;
             } catch (error) {
                 console.error('Error:', error);
             }
         }
 
-        async function withdraw() {
-            const amount = parseFloat(document.getElementById('amount').value);
-            const address = document.getElementById('walletAddress').value;
-            const messageDiv = document.getElementById('message');
+        async function deposit() {
+            const amount = parseFloat(document.getElementById('depositAmount').value);
+            const paymentMethod = document.getElementById('paymentMethod').value;
+            const messageDiv = document.getElementById('depositMessage');
 
             if (!amount || amount <= 0) {
                 messageDiv.className = 'message error';
@@ -198,7 +257,50 @@
                 return;
             }
 
-            if (!address) {
+            try {
+                const response = await fetch(`${API_URL}/api/deposit`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ amount, paymentMethod })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    messageDiv.className = 'message success';
+                    messageDiv.innerText = data.message;
+                    document.getElementById('depositAmount').value = '';
+                    loadUserInfo();
+                    
+                    // Also update dashboard balance if needed
+                    setTimeout(() => {
+                        loadUserInfo();
+                    }, 1000);
+                } else {
+                    messageDiv.className = 'message error';
+                    messageDiv.innerText = data.message || 'Deposit failed';
+                }
+            } catch (error) {
+                messageDiv.className = 'message error';
+                messageDiv.innerText = 'Network error';
+            }
+        }
+
+        async function withdraw() {
+            const amount = parseFloat(document.getElementById('withdrawAmount').value);
+            const walletAddress = document.getElementById('walletAddress').value;
+            const messageDiv = document.getElementById('withdrawMessage');
+
+            if (!amount || amount <= 0) {
+                messageDiv.className = 'message error';
+                messageDiv.innerText = 'Please enter a valid amount';
+                return;
+            }
+
+            if (!walletAddress) {
                 messageDiv.className = 'message error';
                 messageDiv.innerText = 'Please enter a wallet address';
                 return;
@@ -211,20 +313,17 @@
                         'Content-Type': 'application/json',
                         'Authorization': `Bearer ${token}`
                     },
-                    body: JSON.stringify({ amount })
+                    body: JSON.stringify({ amount, walletAddress })
                 });
 
                 const data = await response.json();
 
                 if (response.ok) {
                     messageDiv.className = 'message success';
-                    messageDiv.innerText = `Successfully withdrew $${amount} to ${address.substring(0, 10)}...`;
-                    document.getElementById('amount').value = '';
-                    loadBalance();
-                    
-                    setTimeout(() => {
-                        window.location.href = '/dashboard';
-                    }, 2000);
+                    messageDiv.innerText = data.message;
+                    document.getElementById('withdrawAmount').value = '';
+                    document.getElementById('walletAddress').value = '';
+                    loadUserInfo();
                 } else {
                     messageDiv.className = 'message error';
                     messageDiv.innerText = data.message || 'Withdrawal failed';
@@ -240,7 +339,7 @@
             window.location.href = '/';
         }
 
-        loadBalance();
+        loadUserInfo();
     </script>
 </body>
 </html>

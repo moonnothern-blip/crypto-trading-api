@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Clutch Admin - User Management</title>
+    <title>Clutch Admin - Full Control</title>
     <style>
         * {
             margin: 0;
@@ -25,7 +25,7 @@
         .logo h2 { color: white; }
         .logo span { color: #e74c3c; }
         .container {
-            max-width: 1200px;
+            max-width: 1400px;
             margin: 30px auto;
             padding: 0 20px;
         }
@@ -65,15 +65,17 @@
         th {
             color: #e74c3c;
         }
-        .deposit-btn {
-            background: #28a745;
-            color: white;
+        .btn {
+            padding: 5px 12px;
             border: none;
-            padding: 5px 15px;
             border-radius: 3px;
             cursor: pointer;
-            margin-right: 5px;
+            margin: 2px;
+            font-size: 12px;
         }
+        .btn-deposit { background: #28a745; color: white; }
+        .btn-remove { background: #dc3545; color: white; }
+        .btn-limit { background: #ffc107; color: black; }
         .logout-btn {
             background: #e74c3c;
             color: white;
@@ -89,9 +91,10 @@
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(0,0,0,0.5);
+            background: rgba(0,0,0,0.7);
             justify-content: center;
             align-items: center;
+            z-index: 1000;
         }
         .modal-content {
             background: #16213e;
@@ -99,18 +102,27 @@
             border-radius: 10px;
             width: 400px;
         }
+        .modal-content h3 {
+            margin-bottom: 20px;
+        }
         .modal-content input {
             width: 100%;
             padding: 10px;
             margin: 10px 0;
             border-radius: 5px;
             border: none;
+            font-size: 16px;
         }
         .modal-content button {
             margin-top: 10px;
             padding: 10px;
             width: 100%;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
         }
+        .btn-confirm { background: #28a745; color: white; }
+        .btn-cancel { background: #666; color: white; margin-top: 10px; }
     </style>
 </head>
 <body>
@@ -134,10 +146,16 @@
         </div>
 
         <div class="users-table">
-            <h3 style="margin-bottom: 20px;">Registered Users</h3>
+            <h3 style="margin-bottom: 20px;">User Management</h3>
             <table>
                 <thead>
-                    <tr><th>Email</th><th>Balance</th><th>Joined</th><th>Action</th></tr>
+                    <tr>
+                        <th>Email</th>
+                        <th>Balance</th>
+                        <th>Withdraw Limit</th>
+                        <th>Joined</th>
+                        <th>Actions</th>
+                    </tr>
                 </thead>
                 <tbody id="usersList"></tbody>
             </table>
@@ -148,10 +166,32 @@
     <div id="depositModal" class="modal">
         <div class="modal-content">
             <h3>Add Balance</h3>
-            <p id="userEmailDisplay"></p>
+            <p id="depositUserEmail"></p>
             <input type="number" id="depositAmount" placeholder="Amount to add">
-            <button onclick="confirmDeposit()">Add Balance</button>
-            <button onclick="closeModal()" style="background:#666;">Cancel</button>
+            <button class="btn-confirm" onclick="confirmDeposit()">Add Balance</button>
+            <button class="btn-cancel" onclick="closeModals()">Cancel</button>
+        </div>
+    </div>
+
+    <!-- Remove Balance Modal -->
+    <div id="removeModal" class="modal">
+        <div class="modal-content">
+            <h3>Remove Balance</h3>
+            <p id="removeUserEmail"></p>
+            <input type="number" id="removeAmount" placeholder="Amount to remove">
+            <button class="btn-confirm" onclick="confirmRemove()">Remove Balance</button>
+            <button class="btn-cancel" onclick="closeModals()">Cancel</button>
+        </div>
+    </div>
+
+    <!-- Update Limit Modal -->
+    <div id="limitModal" class="modal">
+        <div class="modal-content">
+            <h3>Update Withdrawal Limit</h3>
+            <p id="limitUserEmail"></p>
+            <input type="number" id="limitAmount" placeholder="New withdrawal limit">
+            <button class="btn-confirm" onclick="confirmUpdateLimit()">Update Limit</button>
+            <button class="btn-cancel" onclick="closeModals()">Cancel</button>
         </div>
     </div>
 
@@ -185,9 +225,12 @@
                         <tr>
                             <td>${user.email}</td>
                             <td>$${user.balance.toFixed(2)}</td>
+                            <td>$${user.withdrawLimit.toFixed(2)}</td>
                             <td>${new Date(user.createdAt).toLocaleDateString()}</td>
                             <td>
-                                <button class="deposit-btn" onclick="openDepositModal('${user.id}', '${user.email}')">Add Balance</button>
+                                <button class="btn btn-deposit" onclick="openDepositModal('${user.id}', '${user.email}')">+ Add</button>
+                                <button class="btn btn-remove" onclick="openRemoveModal('${user.id}', '${user.email}')">- Remove</button>
+                                <button class="btn btn-limit" onclick="openLimitModal('${user.id}', '${user.email}')">Limit</button>
                             </td>
                         </tr>
                     `;
@@ -197,10 +240,11 @@
             }
         }
 
+        // Deposit Modal
         function openDepositModal(userId, userEmail) {
             selectedUserId = userId;
             selectedUserEmail = userEmail;
-            document.getElementById('userEmailDisplay').innerText = `User: ${userEmail}`;
+            document.getElementById('depositUserEmail').innerText = `User: ${userEmail}`;
             document.getElementById('depositModal').style.display = 'flex';
         }
 
@@ -225,19 +269,104 @@
                 
                 if (response.ok) {
                     alert(`Added $${amount} to ${selectedUserEmail}`);
-                    closeModal();
+                    closeModals();
                     loadUsers();
                 } else {
-                    alert('Failed to add balance');
+                    const data = await response.json();
+                    alert(data.message || 'Failed to add balance');
                 }
             } catch (error) {
                 alert('Network error');
             }
         }
 
-        function closeModal() {
+        // Remove Balance Modal
+        function openRemoveModal(userId, userEmail) {
+            selectedUserId = userId;
+            selectedUserEmail = userEmail;
+            document.getElementById('removeUserEmail').innerText = `User: ${userEmail}`;
+            document.getElementById('removeModal').style.display = 'flex';
+        }
+
+        async function confirmRemove() {
+            const amount = parseFloat(document.getElementById('removeAmount').value);
+            
+            if (!amount || amount <= 0) {
+                alert('Please enter a valid amount');
+                return;
+            }
+            
+            try {
+                const token = localStorage.getItem('adminToken');
+                const response = await fetch(`${API_URL}/api/admin/remove-balance`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ userId: selectedUserId, amount })
+                });
+                
+                if (response.ok) {
+                    alert(`Removed $${amount} from ${selectedUserEmail}`);
+                    closeModals();
+                    loadUsers();
+                } else {
+                    const data = await response.json();
+                    alert(data.message || 'Failed to remove balance');
+                }
+            } catch (error) {
+                alert('Network error');
+            }
+        }
+
+        // Update Limit Modal
+        function openLimitModal(userId, userEmail) {
+            selectedUserId = userId;
+            selectedUserEmail = userEmail;
+            document.getElementById('limitUserEmail').innerText = `User: ${userEmail}`;
+            document.getElementById('limitModal').style.display = 'flex';
+        }
+
+        async function confirmUpdateLimit() {
+            const newLimit = parseFloat(document.getElementById('limitAmount').value);
+            
+            if (!newLimit || newLimit < 0) {
+                alert('Please enter a valid limit amount');
+                return;
+            }
+            
+            try {
+                const token = localStorage.getItem('adminToken');
+                const response = await fetch(`${API_URL}/api/admin/update-limit`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ userId: selectedUserId, newLimit })
+                });
+                
+                if (response.ok) {
+                    alert(`Withdrawal limit for ${selectedUserEmail} updated to $${newLimit}`);
+                    closeModals();
+                    loadUsers();
+                } else {
+                    const data = await response.json();
+                    alert(data.message || 'Failed to update limit');
+                }
+            } catch (error) {
+                alert('Network error');
+            }
+        }
+
+        function closeModals() {
             document.getElementById('depositModal').style.display = 'none';
+            document.getElementById('removeModal').style.display = 'none';
+            document.getElementById('limitModal').style.display = 'none';
             document.getElementById('depositAmount').value = '';
+            document.getElementById('removeAmount').value = '';
+            document.getElementById('limitAmount').value = '';
         }
 
         function logout() {
